@@ -1,3 +1,5 @@
+import Mathlib.Logic.Relation
+
 @[reducible]
 def Cown := Nat
 

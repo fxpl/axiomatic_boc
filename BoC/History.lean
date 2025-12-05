@@ -2,6 +2,8 @@ import Mathlib.Logic.Relation
 
 import BoC.Common
 
+section Definitions
+
 inductive Event where
 | Spawn (bid : BId)
 | Run (bid : BId)
@@ -47,19 +49,19 @@ notation H "[" bid "+=" e "]" => History.add_behavior_event H bid e
 notation H "[" cowns "+=" e "]" => History.add_cown_event H cowns e
 
 @[simp]
-def wf_bid_history_tail (bid : BId) : List Event → Prop
+def wf_behavior_history_tail (bid : BId) : List Event → Prop
 | [] => True
 | [Event.Commit bid'] => bid = bid'
 | Event.Spawn bid' :: es =>
-    bid ≠ bid' ∧ wf_bid_history_tail bid es
+    bid ≠ bid' ∧ wf_behavior_history_tail bid es
 | _ => False
 
 @[simp]
-def wf_bid_history (bid : BId) : List Event → Prop
+def wf_behavior_history (bid : BId) : List Event → Prop
 | [] => True
 | Event.Run bid' :: es =>
     bid = bid' ∧
-    wf_bid_history_tail bid es ∧
+    wf_behavior_history_tail bid es ∧
     List.Pairwise (· ≠ ·) es
 | _ => False
 
@@ -67,9 +69,9 @@ def wf_bid_history (bid : BId) : List Event → Prop
 def wf_cown_history : List Event → Prop
 | [] => True
 | [Event.Run _] => True
-| Event.Run bid :: Event.Spawn bid' :: es =>
+| Event.Run bid :: Event.Commit bid' :: es =>
     bid = bid' ∧ wf_cown_history es ∧
-    Event.Run bid ∉ es ∧ Event.Spawn bid' ∉ es
+    Event.Run bid ∉ es ∧ Event.Commit bid' ∉ es
 | _ => False
 
 @[simp]
@@ -90,9 +92,8 @@ inductive CausalStep (H : History) : Event → Event → Prop where
 
 notation H "⊢" e1 "≺" e2 => Relation.ReflTransGen (CausalStep H) e1 e2
 
--- TODO: Things that run must have been spawned (maybe not...)
 def History.wf (H : History) : Prop :=
-  (∀bid, wf_bid_history bid (H.behaviors bid))
+  (∀bid, wf_behavior_history bid (H.behaviors bid))
   ∧
   unique_spawns H.behaviors
   ∧
@@ -104,6 +105,16 @@ def History.wf (H : History) : Prop :=
 
 notation "⊢" H => History.wf H
 
+def History.complete (H : History) : Prop :=
+  (∀bid, Event.Run bid ∈ H.behaviors bid →
+         Event.Commit bid ∈ H.behaviors bid) ∧
+  (∀bid1 bid2,
+     Event.Spawn bid2 ∈ H.behaviors bid1 →
+     Event.Run bid2 ∈ H.behaviors bid2)
+
+end Definitions
+
+-- Examples and theorems
 private def cyclic_history : History :=
   ⟨fun bid =>
      if bid = 0 then
@@ -148,6 +159,11 @@ theorem empty_history_wf :
         | tail h_ab h_step =>
           cases h_step <;> simp at *
 
+theorem empty_history_complete :
+    History.complete History.empty :=
+  by
+    simp [History.complete]
+
 theorem wf_cown_history_no_dup {es} :
     wf_cown_history es →
     List.Pairwise (· ≠ ·) es :=
@@ -161,7 +177,7 @@ theorem wf_cown_history_no_dup {es} :
       cases e with
       | Run bid =>
         cases e' with
-        | Spawn bid' =>
+        | Commit bid' =>
           rcases h_wf with ⟨h_eq, h_wf_tail, h_nin1, h_nin2⟩
           subst h_eq
           simp
