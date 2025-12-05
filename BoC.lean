@@ -1,1 +1,1 @@
-import BoC.Basic
+import BoC.Semantics
