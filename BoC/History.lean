@@ -7,12 +7,12 @@ section Definitions
 inductive Event where
 | Spawn (bid : BId)
 | Run (bid : BId)
-| Commit (bid : BId)
+| Complete (bid : BId)
 
 def Event.fresh (n : Nat) : Event -> Prop
-| Event.Spawn m => m < n
-| Event.Run m => m < n
-| Event.Commit m => m < n
+| .Spawn m => m < n
+| .Run m => m < n
+| .Complete m => m < n
 
 -- A history maps behavior IDs and cowns to the events they have been involved
 -- in. An empty event list means the behavior or cown has not been run/used yet.
@@ -51,15 +51,15 @@ notation H "[" cowns "+=" e "]" => History.add_cown_event H cowns e
 @[simp]
 def wf_behavior_history_tail (bid : BId) : List Event → Prop
 | [] => True
-| [Event.Commit bid'] => bid = bid'
-| Event.Spawn bid' :: es =>
+| [.Complete bid'] => bid = bid'
+| .Spawn bid' :: es =>
     bid ≠ bid' ∧ wf_behavior_history_tail bid es
 | _ => False
 
 @[simp]
 def wf_behavior_history (bid : BId) : List Event → Prop
 | [] => True
-| Event.Run bid' :: es =>
+| .Run bid' :: es =>
     bid = bid' ∧
     wf_behavior_history_tail bid es ∧
     List.Pairwise (· ≠ ·) es
@@ -68,27 +68,27 @@ def wf_behavior_history (bid : BId) : List Event → Prop
 @[simp]
 def wf_cown_history : List Event → Prop
 | [] => True
-| [Event.Run _] => True
-| Event.Run bid :: Event.Commit bid' :: es =>
+| [.Run _] => True
+| .Run bid :: .Complete bid' :: es =>
     bid = bid' ∧ wf_cown_history es ∧
-    Event.Run bid ∉ es ∧ Event.Commit bid' ∉ es
+    .Run bid ∉ es ∧ .Complete bid' ∉ es
 | _ => False
 
 @[simp]
 def unique_spawns (h : BId → List Event) : Prop :=
   ∀bid1 bid2 bid,
     bid1 ≠ bid2 →
-    Event.Spawn bid ∈ h bid1 →
-    Event.Spawn bid ∉ h bid2
+    .Spawn bid ∈ h bid1 →
+    .Spawn bid ∉ h bid2
 
 inductive CausalStep (H : History) : Event → Event → Prop where
 | Seq {es1 es2 e1 e2 bid} :
     H.behaviors bid = es1 ++ [e1, e2] ++ es2 →
     CausalStep H e1 e2
 | Spawn {bid1 bid2 es} :
-    Event.Spawn bid2 ∈ H.behaviors bid1 →
-    H.behaviors bid2 = Event.Run bid2 :: es →
-    CausalStep H (Event.Spawn bid2) (Event.Run bid2)
+    .Spawn bid2 ∈ H.behaviors bid1 →
+    H.behaviors bid2 = .Run bid2 :: es →
+    CausalStep H (.Spawn bid2) (.Run bid2)
 
 notation H "⊢" e1 "≺" e2 => ((CausalStep H)*) e1 e2
 
@@ -106,11 +106,11 @@ def History.wf (H : History) : Prop :=
 notation "⊢" H => History.wf H
 
 def History.complete (H : History) : Prop :=
-  (∀bid, Event.Run bid ∈ H.behaviors bid →
-         Event.Commit bid ∈ H.behaviors bid) ∧
+  (∀bid, .Run bid ∈ H.behaviors bid →
+         .Complete bid ∈ H.behaviors bid) ∧
   (∀bid1 bid2,
-     Event.Spawn bid2 ∈ H.behaviors bid1 →
-     Event.Run bid2 ∈ H.behaviors bid2)
+     .Spawn bid2 ∈ H.behaviors bid1 →
+     .Run bid2 ∈ H.behaviors bid2)
 
 end Definitions
 
@@ -118,9 +118,9 @@ end Definitions
 private def cyclic_history : History :=
   ⟨fun bid =>
      if bid = 0 then
-       [Event.Run 0, Event.Spawn 1]
+       [.Run 0, .Spawn 1]
      else if bid = 1 then
-       [Event.Run 1, Event.Spawn 0]
+       [.Run 1, .Spawn 0]
      else
        [],
    fun _ => []⟩
@@ -129,19 +129,19 @@ example : ¬ (⊢ cyclic_history) :=
   by
     intros h_contra
     rcases h_contra with ⟨h_bid, h_unique, h_cown, h_pairwise, h_po⟩
-    have h_01 : cyclic_history ⊢ Event.Run 0 ≺ Event.Spawn 1 := by
+    have h_01 : cyclic_history ⊢ .Run 0 ≺ .Spawn 1 := by
       apply Relation.ReflTransGen.single
-      apply @CausalStep.Seq cyclic_history [] [] (Event.Run 0) (Event.Spawn 1) 0
+      apply @CausalStep.Seq cyclic_history [] [] (.Run 0) (.Spawn 1) 0
       simp [cyclic_history]
-    have h_10 : cyclic_history ⊢ Event.Spawn 1 ≺ Event.Run 0 := by
-      apply @Relation.ReflTransGen.head _ _ (Event.Spawn 1) (Event.Run 1) (Event.Run 0)
-      · apply @CausalStep.Spawn cyclic_history 0 1 [Event.Spawn 0] <;> simp [cyclic_history]
-      · apply @Relation.ReflTransGen.head _ _ (Event.Run 1) (Event.Spawn 0) (Event.Run 0)
-        · apply @CausalStep.Seq cyclic_history [] [] (Event.Run 1) (Event.Spawn 0) 1
+    have h_10 : cyclic_history ⊢ .Spawn 1 ≺ .Run 0 := by
+      apply @Relation.ReflTransGen.head Event _ (.Spawn 1) (.Run 1) (.Run 0)
+      · apply @CausalStep.Spawn cyclic_history 0 1 [.Spawn 0] <;> simp [cyclic_history]
+      · apply @Relation.ReflTransGen.head Event _ (.Run 1) (.Spawn 0) (.Run 0)
+        · apply @CausalStep.Seq cyclic_history [] [] (.Run 1) (.Spawn 0) 1
           simp [cyclic_history]
         · apply Relation.ReflTransGen.single
-          apply @CausalStep.Spawn cyclic_history 1 0 [Event.Spawn 1] <;> simp [cyclic_history]
-    apply is_partial_order_is_acyclic h_po (Event.Run 0) (Event.Spawn 1)
+          apply @CausalStep.Spawn cyclic_history 1 0 [.Spawn 1] <;> simp [cyclic_history]
+    apply is_partial_order_is_acyclic h_po (.Run 0) (.Spawn 1)
     grind
 
 theorem empty_history_wf :
@@ -177,7 +177,7 @@ theorem wf_cown_history_no_dup {es} :
       cases e with
       | Run bid =>
         cases e' with
-        | Commit bid' =>
+        | Complete bid' =>
           rcases h_wf with ⟨h_eq, h_wf_tail, h_nin1, h_nin2⟩
           subst h_eq
           simp
