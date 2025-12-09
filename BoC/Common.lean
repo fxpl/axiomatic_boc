@@ -46,6 +46,14 @@ theorem is_partial_order_is_acyclic {α : Type} {r : α → α → Prop} :
     have h_ba := h_po.is_antisymmetric a b h_ab
     grind
 
+-- Notations for relations
+instance RelationUnionInst {α : Type*} : Union (α → α → Prop) where
+  union r1 r2 := fun a b => r1 a b ∨ r2 a b
+
+infixr:80 " ∘ "  => Relation.Comp
+postfix:80 " + " => Relation.TransGen
+postfix:80 " * " => Relation.ReflTransGen
+
 /-
 theorem non_empty_middle_inv {A : Type} {l : List A} :
     List.length l > 0 →

@@ -90,7 +90,7 @@ inductive CausalStep (H : History) : Event → Event → Prop where
     H.behaviors bid2 = Event.Run bid2 :: es →
     CausalStep H (Event.Spawn bid2) (Event.Run bid2)
 
-notation H "⊢" e1 "≺" e2 => Relation.ReflTransGen (CausalStep H) e1 e2
+notation H "⊢" e1 "≺" e2 => ((CausalStep H)*) e1 e2
 
 def History.wf (H : History) : Prop :=
   (∀bid, wf_behavior_history bid (H.behaviors bid))

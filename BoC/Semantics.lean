@@ -216,12 +216,4 @@ theorem cfg_done_history_complete {cfg H} :
       simp at h_wf_b
       rcases e <;> try grind
 
-inductive ReflTransStepCfg : Cfg × History → Cfg × History → Prop where
-| Refl {cfg H} : ReflTransStepCfg (cfg, H) (cfg, H)
-| Trans {cfg1 cfg2 cfg3 H1 H2 H3} :
-    ((cfg1, H1) ⇒ (cfg2, H2)) →
-    ReflTransStepCfg (cfg2, H2) (cfg3, H3) →
-    ReflTransStepCfg (cfg1, H1) (cfg3, H3)
-notation cfg " ⇒⋆ " cfg' => ReflTransStepCfg cfg cfg'
-
 end ConcurrentSemantics
