@@ -19,10 +19,14 @@ notation "when" cowns "{{" "}}" => Stmt.seq cowns Stmt.done Stmt.done
 -- cowns ⊆ σ
 -- ---------------------------------------------------------------------
 -- c' ⊢ (Cown c = when cowns { body } ; cont, σ) --> (cont[c ↦ c'], σ ∪ {c'}) | (body, cowns, σ)
+
+set_option quotPrecheck false in
+set_option hygiene false in
+notation s "~>" s' "|" b => StepBehavior s (s', b)
+
 inductive StepBehavior : Stmt → Stmt × (List Cown × Stmt) → Prop where
 | When {cowns body cont} :
-    StepBehavior (Stmt.seq cowns body cont)
-                 (cont, (cowns, body))
+    ((Stmt.seq cowns body cont) ~> cont | (cowns, body))
 
 end UnderlyingLanguage
 
@@ -45,11 +49,11 @@ def CfgFreshness : Cfg -> Prop
     (∀b ∈ pending, b.bid < fresh)
 
 inductive StepCfg : Cfg × History → Cfg × History → Prop where
-| Spawn {fresh bs1 bs2 bid cowns cowns' s s' s'' pending H} :
-    StepBehavior s (s', (cowns', s'')) →
+| Spawn {fresh bid : BId} {bs1 bs2 cowns cowns' s s' s'' pending H} :
+    (s ~> s' | (cowns', s'')) →
     StepCfg (⟨fresh, bs1 ++ ⟨bid, cowns, s⟩ :: bs2, pending⟩, H)
             (⟨fresh + 1, bs1 ++ ⟨bid, cowns, s'⟩ :: bs2, pending ++ [⟨fresh, cowns', s''⟩]⟩,
-              (H[bid += Event.Spawn bid]))
+              (H[bid += Event.Spawn fresh]))
 | Complete {fresh bs1 bs2 bid} {cowns : List Cown} {pending H} :
     StepCfg (⟨fresh, bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2, pending⟩, H)
     (⟨fresh, bs1 ++ bs2, pending⟩, (H[bid += Event.Complete bid][cowns += Event.Complete bid]))
@@ -120,7 +124,7 @@ theorem step_cfg_progress {cfg H} :
             apply StepCfg.Complete
           | seq cowns' body cont =>
             exists ⟨fresh + 1, ([] ++ ⟨bid, cowns, cont⟩ :: running'),
-                    (pending ++ [⟨fresh, cowns', body⟩])⟩, H[bid += Event.Spawn bid]
+                    (pending ++ [⟨fresh, cowns', body⟩])⟩, H[bid += Event.Spawn fresh]
             rw [← List.nil_append ({ bid := bid, cowns := cowns,
                                      stmt := Stmt.seq cowns' body cont } :: running')]
             have h_eq2 : (pending ++ [⟨fresh, cowns', body⟩]) =
@@ -137,7 +141,7 @@ def HistoryMatchesCfg (H : History) : Cfg → Prop
                       Event.Complete b.bid ∉ H.behaviors b.bid)) ∧
   -- All pending behaviors have not started
   (∀b ∈ pending, Event.Run b.bid ∉ H.behaviors b.bid) ∧
-  -- Pending behaviors have been spComplete
+  -- Pending behaviors have been spawned
   (∀b ∈ pending, ∃bid', Event.Spawn b.bid ∈ H.behaviors bid') ∧
   -- Spawned behaviors are either pending, running, or completed
   (∀bid1 bid2,
@@ -173,15 +177,21 @@ theorem step_cfg_preserves_history_wf {cfg cfg' H H'} :
     intro h_step h_model h_wf
     rcases cfg with ⟨fresh, running, pending⟩
     rcases cfg' with ⟨fresh', running', pending'⟩
-    sorry
+    cases h_step with
+    | @Spawn fresh bs1 bs2 bid cowns cowns' s s' s'' pending H h_step =>
+      sorry
+    | @Complete fresh bs1 bs2 bid cowns pending H =>
+      sorry
+    | @Run fresh running bs1 bs2 b H h_no_running h_no_pending =>
+      sorry
 
 theorem step_cfg_preserves_matching_history {cfg cfg' H H'} :
-    ((cfg, H) ⇒ (cfg', H')) →
     (H ⊢ cfg) →
-    (⊢ H) →
+    ((cfg, H) ⇒ (cfg', H')) →
+--    (⊢ H) →
     (H' ⊢ cfg') :=
   by
-    intro h_step h_model h_wf
+    intro h_model h_step
     rcases cfg with ⟨fresh, running, pending⟩
     rcases cfg' with ⟨fresh', running', pending'⟩
     sorry
@@ -206,7 +216,7 @@ theorem cfg_done_history_complete {cfg H} :
       grind
     · introv h_in
       have h_complete := h_spawned _ _ h_in
-      rcases h_wf with ⟨h_wf_bs, _, _, _, _⟩
+      rcases h_wf with ⟨h_wf_bs, _, _, _⟩
       have h_wf_b := h_wf_bs bid2
       let b_hist := H.behaviors bid2
       have h_eq : b_hist = H.behaviors bid2 := by rfl
@@ -214,7 +224,7 @@ theorem cfg_done_history_complete {cfg H} :
       rw [← h_eq] at h_wf_b
       rw [← h_eq]
       rcases (b_hist) with _ | ⟨e, es⟩ <;> try grind
-      simp at h_wf_b
+      simp [wf_behavior_history] at h_wf_b
       rcases e <;> try grind
 
 end ConcurrentSemantics

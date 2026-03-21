@@ -37,9 +37,28 @@ structure is_partial_order {α : Type} (r : α → α → Prop) : Prop where
   is_transitive : is_transitive r
   is_antisymmetric : is_antisymmetric r
 
+structure is_strict_partial_order {α : Type} (r : α → α → Prop) : Prop where
+  mk ::
+  is_reflective : is_reflective r
+  is_transitive : is_transitive r
+  is_antisymmetric : is_antisymmetric r
+
+@[reducible]
+def is_acyclic {α : Type} (r : α → α → Prop) : Prop :=
+  ∀a b, ¬(r a b ∧ r b a ∧ a ≠ b)
+
 theorem is_partial_order_is_acyclic {α : Type} {r : α → α → Prop} :
     is_partial_order r →
-    ∀a b, ¬(r a b ∧ r b a ∧ a ≠ b) :=
+    is_acyclic r :=
+  by
+    intro h_po a b h_contra
+    rcases h_contra with ⟨h_ab, h_ba, h_neq⟩
+    have h_ba := h_po.is_antisymmetric a b h_ab
+    grind
+
+theorem is_strict_partial_order_is_acyclic {α : Type} {r : α → α → Prop} :
+    is_strict_partial_order r →
+    is_acyclic r :=
   by
     intro h_po a b h_contra
     rcases h_contra with ⟨h_ab, h_ba, h_neq⟩
