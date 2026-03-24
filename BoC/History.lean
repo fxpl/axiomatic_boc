@@ -205,6 +205,7 @@ example : ¬ (⊢ cyclic_history) :=
       subst h_spawn h_spawns_eq
       simp [wf_behavior_history_spawns] at h_spawns
 
+-- TODO: Sort theorems and lemmas
 theorem empty_history_wf :
   ⊢ History.empty :=
   by
@@ -521,6 +522,58 @@ theorem wf_history_run_mem_inv {bid bid' es} :
         · have contra := wf_history_tail_mem_inv h_tail _ h_in
           simp at contra
 
+lemma wf_history_spawns_lt_inv {bid bid' es} :
+    wf_behavior_history_spawns bid es →
+    .Spawn bid' ∈ es →
+    bid < bid' :=
+  by
+    intro h_wf h_in
+    cases es with
+    | nil =>
+      simp at h_in
+    | cons e es' =>
+      cases e with
+      | Spawn b =>
+        simp [wf_behavior_history_spawns] at h_wf
+        rcases h_wf with ⟨h_lt, h_es_lt, h_spawns⟩
+        simp at h_in
+        rcases h_in with rfl | h_in
+        · exact h_lt
+        · have h_tail_lt : Event.Spawn b < Event.Spawn bid' := h_es_lt _ h_in
+          simp at h_tail_lt
+          exact Nat.lt_trans h_lt h_tail_lt
+      | Run b =>
+        simp [wf_behavior_history_spawns] at h_wf
+      | Complete b =>
+        simp [wf_behavior_history_spawns] at h_wf
+
+theorem wf_history_spawn_mem_inv {bid bid' es} :
+    wf_behavior_history bid es →
+    .Spawn bid' ∈ es →
+    bid < bid' :=
+  by
+    intro h_wf h_in
+    cases es with
+    | nil =>
+      simp at h_in
+    | cons e es' =>
+      cases e with
+      | Spawn b
+      | Complete b =>
+        simp [wf_behavior_history] at h_wf
+      | Run b =>
+        simp [wf_behavior_history] at h_wf
+        rcases h_wf with ⟨h_eq, init, tail, h_eq', h_spawns, h_tail⟩
+        subst h_eq
+        subst h_eq'
+        have h_mem : .Spawn bid' ∈ init ++ tail := by
+          simp at h_in
+          exact List.mem_append.mpr h_in
+        rcases List.mem_append.mp h_mem with h_in | h_in
+        · exact wf_history_spawns_lt_inv h_spawns h_in
+        · have contra := wf_history_tail_mem_inv h_tail _ h_in
+          simp at contra
+
 theorem wf_history_complete_mem_inv {bid bid' es} :
     wf_behavior_history bid es →
     .Complete bid' ∈ es →
@@ -550,3 +603,29 @@ theorem wf_history_complete_mem_inv {bid bid' es} :
           | cons e tail' =>
             rcases e <;> rcases tail' <;> simp [wf_behavior_history_tail] at h_tail
             grind
+
+lemma wf_history_event_unique {H bid1 bid2 e} :
+    (⊢ H) →
+    e ∈ H.behaviors bid1 →
+    e ∈ H.behaviors bid2 →
+    bid1 = bid2 :=
+  by
+    intro h_wf
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _⟩
+    intro h_mem1 h_mem2
+    cases e with
+    | Spawn bid =>
+      by_cases h_eq : bid1 = bid2
+      · exact h_eq
+      · exfalso
+        have h_not_mem : .Spawn bid ∉ H.behaviors bid2 :=
+          h_unique bid1 bid2 bid h_eq h_mem1
+        exact h_not_mem h_mem2
+    | Run bid =>
+      have h1 : bid1 = bid := wf_history_run_mem_inv (h_behaviors bid1) h_mem1
+      have h2 : bid2 = bid := wf_history_run_mem_inv (h_behaviors bid2) h_mem2
+      grind
+    | Complete bid =>
+      have h1 : bid1 = bid := wf_history_complete_mem_inv (h_behaviors bid1) h_mem1
+      have h2 : bid2 = bid := wf_history_complete_mem_inv (h_behaviors bid2) h_mem2
+      grind
