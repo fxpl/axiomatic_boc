@@ -1,5 +1,3 @@
-import Mathlib.Logic.Relation
-
 import BoC.Common
 
 section Definitions
@@ -166,6 +164,15 @@ def History.wf (H : History) : Prop :=
   ∧
   -- Every cown event corresponds to some behavior event
   (∀c e, e ∈ H.cowns c → ∃bid, e ∈ H.behaviors bid)
+  ∧
+  -- Spawns of cown ordered events are fully ordered
+  (∀bid1 bid2 c e1 e2,
+     [.Complete bid1, .Run bid2] <:+: H.cowns c →
+     is_spawn e1 →
+     is_spawn e2 →
+     e1 ∈ H.behaviors bid1 →
+     e2 ∈ H.behaviors bid2 →
+     e1 < e2)
 
 notation "⊢" H => History.wf H
 
@@ -261,6 +268,7 @@ theorem wf_history_spawn_fresh H {bid fresh : BId} :
       · simp [h_eq]
         grind
     · sorry -- Lemma about unique_spawns
+    · sorry
 
 lemma wf_history_tail_no_run_any {bid es} :
     wf_behavior_history_tail bid es →

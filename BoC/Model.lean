@@ -106,6 +106,7 @@ def model_from_history (H : History) : Model :=
       ∃bid,
         [e1, e2] <:+: H.behaviors bid,
     -- Coherence order
+    -- TODO: Rewrite to use [e1, e2] <:+: H.cowns c
     fun c e1 e2 =>
       ∃bid1 bid2 init tail,
         e1 = .Complete bid1 ∧
@@ -194,7 +195,7 @@ lemma model_from_history_wf_po {H : History} :
     wf_po_relation events po :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order⟩
     simp [model_from_history]
     and_intros
     · introv h_po
@@ -342,7 +343,7 @@ lemma model_from_history_wf_co {H : History} :
     wf_co_relation events co :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order⟩
     and_intros
     · introv h_co
       rcases h_co with ⟨bid1, bid2, init, tail, h_eq1, h_eq2, h_tail⟩
@@ -718,8 +719,8 @@ lemma event_coord_lt_co {e1 e2 : Event} {H : History} :
     have h_lt := wf_cown_history_middle_lt h_wf_c
     have h_in1 : .Complete bid1 ∈ H.cowns c := by grind
     have h_in2 : .Run bid2 ∈ H.cowns c := by grind
-    have ⟨bid, h_in1⟩ := h_wf.2.2.2 c (.Complete bid1) h_in1
-    have ⟨bid, h_in2⟩ := h_wf.2.2.2 c (.Run bid2) h_in2
+    have ⟨bid, h_in1⟩ := h_wf.2.2.2.1 c (.Complete bid1) h_in1
+    have ⟨bid, h_in2⟩ := h_wf.2.2.2.1 c (.Run bid2) h_in2
     have ⟨c1, h_coord1, h_eq1⟩ := mem_has_coord h_in1
     have ⟨c2, h_coord2, h_eq2⟩ := mem_has_coord h_in2
     subst h_eq1 h_eq2
@@ -913,43 +914,51 @@ lemma spawn_lt_po_co_r_clos {H : History} {bid1 bid2 : BId} :
       | inr h_r =>
         simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
 
-lemma spawn_lt_po_co_r_clos' {H : History} {bid1 : BId} {e2 : Event} :
+lemma spawn_lt_po_co_r_clos' {H : History} {e1 e2 : Event} :
     (⊢ H) →
     let m := model_from_history H;
     let r := derived_run_relation m;
     let co' := fun e1 e2 ↦ ∃ c, m.co c e1 e2;
-    ((m.po ∪ co' ∪ r) + ) (Event.Spawn bid1) e2 →
-    match e2 with
-    | Event.Spawn bid2 =>
+    ((m.po ∪ co' ∪ r) + ) e1 e2 →
+    match e1, e2 with
+    | Event.Spawn bid1, Event.Spawn bid2 =>
       bid1 < bid2
-    | Event.Run bid2 =>
+    | Event.Spawn bid1, Event.Run bid2 =>
       bid1 ≤ bid2
-    | Event.Complete bid2 =>
-      True
+    | Event.Spawn bid1, Event.Complete bid2 =>
+      ∀bid, .Spawn bid1 ∈ H.behaviors bid → bid ≤ bid2
+    | Event.Run bid1, Event.Spawn bid2 =>
+      bid1 < bid2
+    | Event.Run bid1, Event.Run bid2 =>
+      bid1 < bid2
+    | Event.Run bid1, Event.Complete bid2 =>
+      bid1 ≤ bid2
+    | Event.Complete bid1, Event.Spawn bid2 =>
+      bid1 < bid2
+    | Event.Complete bid1, Event.Run bid2 =>
+      bid1 < bid2
+    | Event.Complete bid1, Event.Complete bid2 =>
+      bid1 < bid2
  :=
   by
     introv h_wf m_def r_def co_def h_clos
-    generalize h_eq1 : (Event.Spawn bid1) = e1
-    rw [h_eq1] at h_clos
     induction h_clos with
     | @single e1' h_rel =>
       cases h_rel with
       | inl h_po_co =>
         cases h_po_co with
         | inl h_po =>
-          rw [← h_eq1] at h_po
           simp [m_def, model_from_history] at h_po
-          sorry -- Cases on e1'
+          sorry -- Cases on e1' and e2' should follow from wf_behavior_history
         | inr h_co =>
-          rw [← h_eq1] at h_co
           simp [co_def, m_def, model_from_history] at h_co
+          sorry -- Cases on e1' and e2' should follow from wf_cown_history
       | inr h_r =>
-        rw [← h_eq1] at h_r
         simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
         rcases e1' with _ | bid1' | _ <;> try simp at h_r
+        rcases e1 with _ | bid1 | _ <;> try simp at h_r
         simp [h_r.1]
     | @tail e1' e2' h_clos h_step ih =>
-      rw [← h_eq1] at h_clos
       cases h_step with
       | inl h_po_co =>
         cases h_po_co  with
@@ -957,23 +966,129 @@ lemma spawn_lt_po_co_r_clos' {H : History} {bid1 : BId} {e2 : Event} :
           simp [m_def, model_from_history] at h_po
           cases e1' with
           | Spawn bid1' =>
-            simp at ih
             sorry -- Follows from wf_behavior_history
           | Run bid1' =>
-            simp at ih
             sorry -- Follows from wf_behavior_history
           | Complete bid1' =>
-            sorry -- Contradiction
+            sorry
         | inr h_co =>
           simp [co_def, m_def, model_from_history] at h_co
           rcases h_co with ⟨c, bid1', h_eq1, bid2, h_eq2, init, tail, h_eq⟩
           subst h_eq1 h_eq2
           simp at *
-          sorry -- Probably won't work
+          cases e1 with
+          | Spawn bid1 =>
+            simp at ih ⊢
+
+          | Run bid1 =>
+            sorry
+          | Complete bid1 =>
+            sorry
       | inr h_r =>
         simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
         rcases e1' <;> rcases e2' <;> simp at h_r ⊢
         grind
+
+inductive bounded_causality (H : History) : Nat → Event → Event → Prop
+| refl : ∀n e,
+    (match e with
+     | .Spawn bid => n < bid
+     | _ => True) →
+    bounded_causality H n e e
+| po_run : ∀n bid e1 e2,
+    bounded_causality H n e1 e2 →
+    (model_from_history H).po (.Run bid) e1 →
+    bounded_causality H n (.Run bid) e2
+| po_spawn : ∀n bid e1 e2,
+    bounded_causality H bid e1 e2 →
+    n < bid →
+    (model_from_history H).po (.Spawn bid) e1 →
+    bounded_causality H n (.Spawn bid) e2
+| co : ∀n c e1 e2 e3,
+    bounded_causality H n e2 e3 →
+    (model_from_history H).co c e1 e2 →
+    bounded_causality H n e1 e3
+| r : ∀n bid e1 e2,
+    bounded_causality H bid e1 e2 →
+    n < bid →
+    (derived_run_relation (model_from_history H)) (.Spawn bid) e1 →
+    bounded_causality H n (.Spawn bid) e2
+
+lemma bounded_causality_spawn_tail {H : History} {n : Nat} {e : Event} {bid : BId} :
+    bounded_causality H n e (.Spawn bid) →
+    n < bid :=
+  by
+    intro h_bc
+    generalize h_eq : (Event.Spawn bid) = e2
+    rw [h_eq] at h_bc
+    induction h_bc generalizing bid <;> grind
+
+lemma bounded_causality_spawn_head {H : History} {n : Nat} {e : Event} {bid : BId} :
+    bounded_causality H n (.Spawn bid) e →
+    n < bid :=
+  by
+    intro h_bc
+    cases h_bc with
+    | refl
+    | po_spawn
+    | r => grind
+    | co x1 x2 x3 x4 x5 x6 h_co =>
+      simp [model_from_history] at h_co
+
+lemma bounded_causality_spawn_lt {H : History} {n : Nat} {bid1 bid2 : BId} :
+    bounded_causality H n (.Spawn bid1) (.Spawn bid2) →
+    bid1 ≠ bid2 →
+    bid1 < bid2 :=
+  by
+    intro h_bc h_neq
+    cases h_bc with
+    | refl =>
+      simp at h_neq
+    | po_spawn n bid e1 e2 h_bc =>
+      exact bounded_causality_spawn_tail h_bc
+    | co n c e1 e2 e3 h_bc h_co =>
+      simp [model_from_history] at h_co
+    | r n bid e1 e2 h_bc =>
+      exact bounded_causality_spawn_tail h_bc
+
+-- TODO: Assume that there is an external bound
+lemma po_co_r_clos_bounded_causality {H : History} {e1 e2 : Event} :
+    (⊢ H) →
+    let m := model_from_history H
+    let r := derived_run_relation m
+    let co' := fun e1 e2 => ∃c, m.co c e1 e2
+    ((m.po ∪ co' ∪ r)+) e1 e2 →
+    exists n, bounded_causality H n e1 e2 :=
+  by
+    introv h_wf m_def r_def co_def h_clos
+    induction h_clos with
+    | single h_rel =>
+      cases h_rel with
+      | inl h_po_co =>
+        cases h_po_co with
+        | inl h_po =>
+          simp [m_def, model_from_history] at h_po
+          sorry
+        | inr h_co =>
+          simp [co_def, m_def, model_from_history] at h_co
+          sorry
+      | inr h_r =>
+        simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+        sorry
+    | @tail e1' e2' h_clos h_step ih =>
+      cases h_step with
+      | inl h_po_co =>
+        cases h_po_co with
+        | inl h_po =>
+          simp [m_def, model_from_history] at h_po
+          sorry
+        | inr h_co =>
+          simp [co_def, m_def, model_from_history] at h_co
+          sorry
+      | inr h_r =>
+        simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+        rcases e1' <;> rcases e2' <;> simp at h_r ⊢
+        sorry
 
 lemma event_coord_lt_hb {e1 e2 : Event} {H : History} :
     (⊢ H) →
@@ -1001,22 +1116,28 @@ lemma event_coord_lt_hb {e1 e2 : Event} {H : History} :
       let co' := fun e1 e2 => ∃c, m.co c e1 e2
       ((m.po ∪ co' ∪ r)+) (.Spawn bid1') (.Spawn bid2')) := by
       simpa [model_from_history]
+    have ⟨n, h_bound⟩ := po_co_r_clos_bounded_causality h_wf h_po_co_r'
     --have h_lt_bid : bid1' < bid2' := spawn_lt_po_co_r_clos h_wf h_po_co_r' -- TODO: This is currently cheated
     have ⟨c1, c2, h_coord1, h_coord2, h_lt⟩ := event_coord_lt_po_co_r_clos h_wf h_po_co_r'
     have ⟨c1', h_coord1', h_eq1⟩ := mem_has_coord h_in1
     have ⟨c2', h_coord2', h_eq2⟩ := mem_has_coord h_in2
+    have h_neq := event_coord_lt_different_events h_wf h_coord1 h_coord2 h_lt
+    have h_neq' : bid1' ≠ bid2' := by grind
+    have h_lt' : bid1' < bid2' := bounded_causality_spawn_lt h_bound h_neq'
     subst h_eq1 h_eq2
     exists c1', c2'
     and_intros
     · simpa
     · simpa
-    · cases h_lt with
-      | inl h_lt =>
-        left
-        simpa
-      | inr h_eq =>
-        left -- This could be done manually
-        simpa
+    · left
+      assumption
+    -- · cases h_lt with
+    --   | inl h_lt =>
+    --     left
+    --     simpa
+    --   | inr h_eq =>
+    --     left -- This could be done manually
+    --     simpa
 
 /-
 lemma event_tuple_partial_order_po {e1 e2 : Event} {et1 et2 : EventTuple} {H : History} :
