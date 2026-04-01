@@ -73,6 +73,21 @@ infixr:80 " ∘ "  => Relation.Comp
 postfix:80 " + " => Relation.TransGen
 postfix:80 " * " => Relation.ReflTransGen
 
+
+-- Relation lemmas
+lemma TransGen_right_induction {α : Type*} {r : α → α → Prop} {P : α → α → Prop} :
+  (∀a b, r a b → P a b) →
+  (∀a b c, r a b → P b c → P a c) →
+  (∀a b, (r +) a b → P a b) :=
+  by
+    intro h_base h_step a b h_clos
+    induction h_clos with
+    | @single b' h_rel =>
+      exact h_base a b' h_rel
+    | @tail a' b' h_clos h_rel ih =>
+      sorry
+
+
 -- List lemmas
 lemma pair_infix_inv {A} {l : List A} {x1 x2} :
     [x1, x2] <:+: l →

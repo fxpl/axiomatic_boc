@@ -73,12 +73,12 @@ def derived_hb_relation (m : Model) : Event → Event → Prop
 -- Well-formedness conditions for a model
 def Model.wf : Model → Prop
 | m@⟨events, po, co⟩ =>
+  wf_po_relation events po ∧
+  wf_co_relation events co ∧
   -- Derived relations
   let r := derived_run_relation m;
   let hb := derived_hb_relation m;
   let co' := fun e1 e2 => ∃c, co c e1 e2;
-  wf_po_relation events po ∧
-  wf_co_relation events co ∧
   -- co creates a single causal order path for any given cown
   (∀e1 e2 e3 e4 c,
     e1 ≠ e3 →
@@ -188,153 +188,244 @@ lemma po_exists_inv {H : History} {e1 e2} :
       subst h_eq
       assumption
 
+lemma model_from_history_po_events_only {H : History} :
+    (⊢ H) →
+    ∀ e1 e2,
+      (model_from_history H).po e1 e2 →
+      e1 ∈ (model_from_history H).events ∧
+      e2 ∈ (model_from_history H).events :=
+  by
+    intro h_wf e1 e2 h_po
+    rcases h_po with ⟨bid, init, tail, h_eq⟩
+    refine ⟨?_, ?_⟩
+    · exact ⟨bid, by rw [← h_eq]; simp⟩
+    · exact ⟨bid, by rw [← h_eq]; simp⟩
+
+lemma model_from_history_po_shape {H : History} :
+    (⊢ H) →
+    ∀ e1 e2,
+      (model_from_history H).po e1 e2 →
+      match e1, e2 with
+      | .Run _, .Spawn _
+      | .Run _, .Complete _
+      | .Spawn _, .Spawn _
+      | .Spawn _, .Complete _ => True
+      | _, _ => False :=
+  by
+    intro h_wf e1 e2 h_po
+    rcases h_wf with ⟨h_behaviors, _, _, _, _⟩
+    rcases h_po with ⟨bid, h_infix⟩
+    rcases (wf_behavior_history_pair_inv (h_behaviors bid) h_infix) <;>
+      rcases e1 <;> rcases e2 <;> grind [is_run, is_spawn, is_complete]
+
+lemma model_from_history_po_unique_pred {H : History} :
+    (⊢ H) →
+    ∀ e1 e2 e3,
+      (model_from_history H).po e1 e3 →
+      (model_from_history H).po e2 e3 →
+      e1 = e2 :=
+  by
+    intro h_wf e1 e2 e3 h13 h23
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _⟩
+    rcases h13 with ⟨bid1, h_infix1⟩
+    rcases h23 with ⟨bid2, h_infix2⟩
+    have h_disj : is_spawn e3 ∨ is_complete e3 := by
+      have := wf_behavior_history_pair_inv (h_behaviors bid1) h_infix1
+      grind
+    cases h_disj with
+    | inl h_spawn =>
+      have h_mem1 : e3 ∈ H.behaviors bid1 := by
+        rcases h_infix1 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_mem2 : e3 ∈ H.behaviors bid2 := by
+        rcases h_infix2 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_eq : bid1 = bid2 := by
+        simp [unique_spawns] at h_unique
+        rcases e3 <;> simp at h_spawn
+        by_cases (bid1 = bid2) <;> grind
+      subst h_eq
+      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
+        exact wf_behavior_history_no_dup (h_behaviors bid1)
+      exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
+    | inr h_complete =>
+      have h_mem1 : e3 ∈ H.behaviors bid1 := by
+        rcases h_infix1 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_mem2 : e3 ∈ H.behaviors bid2 := by
+        rcases h_infix2 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_eq : bid1 = bid2 := by
+        rcases e3 <;> simp at h_complete
+        grind [wf_history_complete_mem_inv]
+      subst h_eq
+      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
+        exact wf_behavior_history_no_dup (h_behaviors bid1)
+      exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
+
+lemma model_from_history_po_unique_succ {H : History} :
+    (⊢ H) →
+    ∀ e1 e2 e3,
+      (model_from_history H).po e1 e2 →
+      (model_from_history H).po e1 e3 →
+      e2 = e3 :=
+  by
+    intro h_wf e1 e2 e3 h12 h13
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _⟩
+    rcases h12 with ⟨bid1, h_infix1⟩
+    rcases h13 with ⟨bid2, h_infix2⟩
+    have h_disj : is_run e1 ∨ is_spawn e1 := by
+      have := wf_behavior_history_pair_inv (h_behaviors bid1) h_infix1
+      grind
+    cases h_disj with
+    | inl h_run =>
+      have h_mem1 : e1 ∈ H.behaviors bid1 := by
+        rcases h_infix1 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_mem2 : e1 ∈ H.behaviors bid2 := by
+        rcases h_infix2 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_eq : bid1 = bid2 := by
+        rcases e1 <;> simp at h_run
+        grind [wf_history_run_mem_inv]
+      subst h_eq
+      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
+        exact wf_behavior_history_no_dup (h_behaviors bid1)
+      exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
+    | inr h_spawn =>
+      have h_mem1 : e1 ∈ H.behaviors bid1 := by
+        rcases h_infix1 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_mem2 : e1 ∈ H.behaviors bid2 := by
+        rcases h_infix2 with ⟨init, tail, h_eq⟩
+        rw [← h_eq]
+        simp
+      have h_eq : bid1 = bid2 := by
+        simp [unique_spawns] at h_unique
+        rcases e1 <;> simp at h_spawn
+        by_cases (bid1 = bid2) <;> grind
+      subst h_eq
+      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
+        exact wf_behavior_history_no_dup (h_behaviors bid1)
+      exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
+
+lemma model_from_history_po_preceded_by_run {H : History} :
+    (⊢ H) →
+    ∀ e,
+      e ∈ (model_from_history H).events →
+      ∃ bid, ((model_from_history H).po*) (.Run bid) e :=
+  by
+    intro h_wf e h_in
+    rcases h_wf with ⟨h_behaviors, _, _, _, _⟩
+    rcases h_in with ⟨bid, h_in_bid⟩
+    refine ⟨bid, ?_⟩
+    apply po_pick_bid (bid := bid)
+    have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
+      exact wf_behavior_history_no_dup (h_behaviors bid)
+    rw [pair_refl_trans_iff h_no_dup]
+    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_behaviors bid
+    cases h_beh : H.behaviors bid with
+    | nil =>
+      simp [h_beh] at h_in_bid
+    | cons e' es =>
+      cases e' with
+      | Spawn bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+      | Complete bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+      | Run bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+        rcases h_bwf with ⟨h_bid_eq, h_rest⟩
+        subst h_bid_eq
+        simp [h_beh] at h_in_bid
+        rcases h_in_bid with h_head | h_tail
+        · left
+          exact h_head.symm
+        · right
+          rcases List.mem_iff_append.mp h_tail with ⟨init, tail, h_split⟩
+          rw [h_split]
+          simp
+
+lemma model_from_history_po_run_complete_same_bid {H : History} :
+    (⊢ H) →
+    ∀ bid1 bid2,
+      ((model_from_history H).po+) (.Run bid1) (.Complete bid2) →
+      bid1 = bid2 :=
+  by
+    intro h_wf bid1 bid2 h_path
+    have h_wf' : (⊢ H) := h_wf
+    rcases h_wf with ⟨h_behaviors, _, _, _, _⟩
+    have ⟨bid, h_trans⟩ := po_exists_inv h_wf' h_path
+    have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
+      exact wf_behavior_history_no_dup (h_behaviors bid)
+    have h_sub := (pair_trans_iff h_no_dup).1 h_trans
+    rw [pair_sublist_iff] at h_sub
+    rcases h_sub with ⟨init, mid, tail, h_eq⟩
+    have h_run_mem : .Run bid1 ∈ H.behaviors bid := by
+      rw [h_eq]
+      simp
+    have h_complete_mem : .Complete bid2 ∈ H.behaviors bid := by
+      rw [h_eq]
+      simp
+    have h_bid_run : bid = bid1 :=
+      wf_history_run_mem_inv (h_behaviors bid) h_run_mem
+    have h_bid_complete : bid = bid2 :=
+      wf_history_complete_mem_inv (h_behaviors bid) h_complete_mem
+    grind
+
+lemma model_from_history_po_run_to_complete {H : History} {bid : BId} :
+    (⊢ H) →
+    .Complete bid ∈ H.behaviors bid →
+    ((model_from_history H).po*) (.Run bid) (.Complete bid) :=
+  by
+    intro h_wf h_complete_mem
+    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.1 bid
+    have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
+      exact wf_behavior_history_no_dup h_bwf
+    apply po_pick_bid (bid := bid)
+    rw [pair_refl_trans_iff h_no_dup]
+    right
+    rw [pair_sublist_iff]
+    cases h_beh : H.behaviors bid with
+    | nil =>
+      simp [h_beh] at h_complete_mem
+    | cons e es =>
+      cases e with
+      | Spawn bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+      | Complete bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+      | Run bid' =>
+        simp [wf_behavior_history, h_beh] at h_bwf
+        rcases h_bwf with ⟨h_bid_eq, h_rest⟩
+        subst h_bid_eq
+        have h_tail_mem : .Complete bid ∈ es := by
+          simpa [h_beh] using h_complete_mem
+        rcases List.mem_iff_append.mp h_tail_mem with ⟨mid, tail, h_split⟩
+        exists [], mid, tail
+        simp [h_split]
+
 lemma model_from_history_wf_po {H : History} :
     (⊢ H) →
     match model_from_history H with
     | ⟨events, po, _⟩ =>
-    wf_po_relation events po :=
+      wf_po_relation events po :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order⟩
-    simp [model_from_history]
-    and_intros
-    · introv h_po
-      rcases h_po with ⟨bid, init, tail, h_eq⟩
-      refine ⟨?_, ?_⟩
-      · exact ⟨bid, by rw [← h_eq]; simp⟩
-      · exact ⟨bid, by rw [← h_eq]; simp⟩
-    · introv h_po
-      rcases h_po with ⟨bid, h_infix⟩
-      rcases (wf_behavior_history_pair_inv (h_behaviors bid) h_infix) <;>
-        rcases e1 <;> rcases e2 <;> grind [is_run, is_spawn, is_complete]
-    · intro e1 e2 e3 h13 h23
-      rcases h13 with ⟨bid1, h_infix1⟩
-      rcases h23 with ⟨bid2, h_infix2⟩
-      have h_disj : is_spawn e3 ∨ is_complete e3 := by
-        have := wf_behavior_history_pair_inv (h_behaviors bid1) h_infix1
-        grind
-      cases h_disj with
-      | inl h_spawn =>
-        have h_mem1 : e3 ∈ H.behaviors bid1 := by
-          rcases h_infix1 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_mem2 : e3 ∈ H.behaviors bid2 := by
-          rcases h_infix2 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_eq : bid1 = bid2 := by
-          simp [unique_spawns] at h_unique
-          rcases e3 <;> simp at h_spawn
-          by_cases (bid1 = bid2) <;> grind
-        subst h_eq
-        have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid1)
-        exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
-      | inr h_complete =>
-        have h_mem1 : e3 ∈ H.behaviors bid1 := by
-          rcases h_infix1 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_mem2 : e3 ∈ H.behaviors bid2 := by
-          rcases h_infix2 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_eq : bid1 = bid2 := by
-          rcases e3 <;> simp at h_complete
-          grind [wf_history_complete_mem_inv]
-        subst h_eq
-        have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid1)
-        exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
-    · intro e1 e2 e3 h12 h13
-      rcases h12 with ⟨bid1, h_infix1⟩
-      rcases h13 with ⟨bid2, h_infix2⟩
-      have h_disj : is_run e1 ∨ is_spawn e1 := by
-        have := wf_behavior_history_pair_inv (h_behaviors bid1) h_infix1
-        grind
-      cases h_disj with
-      | inl h_run =>
-        have h_mem1 : e1 ∈ H.behaviors bid1 := by
-          rcases h_infix1 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_mem2 : e1 ∈ H.behaviors bid2 := by
-          rcases h_infix2 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_eq : bid1 = bid2 := by
-          rcases e1 <;> simp at h_run
-          grind [wf_history_run_mem_inv]
-        subst h_eq
-        have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid1)
-        exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
-      | inr h_spawn =>
-        have h_mem1 : e1 ∈ H.behaviors bid1 := by
-          rcases h_infix1 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_mem2 : e1 ∈ H.behaviors bid2 := by
-          rcases h_infix2 with ⟨init, tail, h_eq⟩
-          rw [← h_eq]
-          simp
-        have h_eq : bid1 = bid2 := by
-          simp [unique_spawns] at h_unique
-          rcases e1 <;> simp at h_spawn
-          by_cases (bid1 = bid2) <;> grind
-        subst h_eq
-        have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid1)
-        exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
-    · introv h_po
-      rcases h_po with ⟨bid, h_infix⟩
-      exists bid
-      apply po_pick_bid (bid := bid)
-      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid)
-      rw [pair_refl_trans_iff h_no_dup]
-      have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_behaviors bid
-      cases h_beh : H.behaviors bid with
-      | nil =>
-        simp [h_beh] at h_infix
-      | cons e es =>
-        cases e with
-        | Spawn bid' =>
-          simp [wf_behavior_history, h_beh] at h_bwf
-        | Complete bid' =>
-          simp [wf_behavior_history, h_beh] at h_bwf
-        | Run bid' =>
-          simp [wf_behavior_history, h_beh] at h_bwf
-          rcases h_bwf with ⟨h_bid_eq, h_rest⟩
-          subst h_bid_eq
-          simp [h_beh] at h_infix
-          rcases h_infix with h_head | h_tail
-          · left
-            exact h_head.symm
-          · right
-            rcases List.mem_iff_append.mp h_tail with ⟨init, tail, h_split⟩
-            rw [h_split]
-            simp
-    · intro bid1 bid2 h_path
-      have h_wf : (⊢ H) := by simp; and_intros <;> assumption
-      have ⟨bid, h_trans⟩:= po_exists_inv h_wf h_path
-      have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-          exact wf_behavior_history_no_dup (h_behaviors bid)
-      have h_sub := (pair_trans_iff h_no_dup).1 h_trans
-      rw [pair_sublist_iff] at h_sub
-      rcases h_sub with ⟨init, mid, tail, h_eq⟩
-      have h_run_mem : .Run bid1 ∈ H.behaviors bid := by
-        rw [h_eq]
-        simp
-      have h_complete_mem : .Complete bid2 ∈ H.behaviors bid := by
-        rw [h_eq]
-        simp
-      have h_bid_run : bid = bid1 :=
-        wf_history_run_mem_inv (h_behaviors bid) h_run_mem
-      have h_bid_complete : bid = bid2 :=
-        wf_history_complete_mem_inv (h_behaviors bid) h_complete_mem
-      grind
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+    · exact model_from_history_po_events_only h_wf
+    · exact model_from_history_po_shape h_wf
+    · exact model_from_history_po_unique_pred h_wf
+    · exact model_from_history_po_unique_succ h_wf
+    · exact model_from_history_po_preceded_by_run h_wf
+    · exact model_from_history_po_run_complete_same_bid h_wf
 
 lemma model_from_history_wf_co {H : History} :
     (⊢ H) →
@@ -381,6 +472,265 @@ lemma model_from_history_wf_co {H : History} :
       simp at h_eq2
       simpa using h_eq2.1
 
+-- TODO: Move to Common.lean
+lemma list_index_lt_inv {A} {x y : A} {l : List A} {i j : Nat} :
+  l[i]? = some x →
+  l[j]? = some y →
+  i < j →
+  ∃init mid tail, l = init ++ x :: mid ++ y :: tail :=
+  by
+    introv h_i h_j h_lt
+    induction l generalizing i j with
+    | nil => rcases i <;> simp at h_i
+    | cons z zs ih =>
+      cases h_lt with
+      | refl =>
+        simp at h_i h_j
+        cases i with
+        | zero =>
+          simp at h_i h_j
+          subst h_i
+          cases zs with
+          | nil => simp at h_j
+          | cons z' zs' =>
+            simp at h_j
+            subst h_j
+            exists [], [], zs'
+        | succ i' =>
+          simp at h_i
+          have ⟨init, mid, tail, h_eq⟩ := ih h_i h_j (by simp)
+          subst h_eq
+          grind
+      | @step k h_le =>
+        cases i with
+        | zero =>
+          simp at h_i h_j
+          subst h_i
+          have h_in : y ∈ zs := by
+            grind
+          have ⟨init, tail, h_eq⟩ : exists init tail, zs = init ++ y :: tail := by
+            rcases List.mem_iff_append.mp h_in with ⟨init, tail, h_eq⟩
+            exists init, tail
+          subst h_eq
+          exists [], init, tail
+        | succ i' =>
+          simp at h_i h_j
+          have h_lt : i' < k := by grind
+          have ⟨init, mid, tail, h_eq⟩ := ih h_i h_j h_lt
+          grind
+
+lemma list_annoying_inv {A} {a b c d : A} {l init init' tail tail' : List A} :
+  a ≠ c →
+  a ≠ d →
+  b ≠ c →
+  l = init' ++ a :: b :: tail' →
+  l = init ++ c :: d :: tail →
+  (∃init'' mid tail'', l = init'' ++ a :: b :: mid ++ c :: d :: tail'') ∨
+  (∃init'' mid tail'', l = init'' ++ c :: d :: mid ++ a :: b :: tail'') :=
+  by
+    intro h_ac h_ad h_bc h_ab h_cd
+    induction init' generalizing l init with
+    | nil =>
+      simp at h_ab
+      rcases init with _ | ⟨x, init'⟩ <;> simp at h_cd; · grind
+      rcases init' with _ | ⟨y, init''⟩ <;> simp at h_cd; · grind
+      subst h_cd
+      simp at h_ab
+      rcases h_ab with ⟨h_eq1, h_eq2, h_eq3⟩
+      subst h_eq1 h_eq2
+      left
+      exists [], init'', tail
+    | cons x xs ih =>
+      simp at h_ab
+      cases init with
+      | nil =>
+        simp at h_cd
+        rcases xs with _ | ⟨y, ys⟩ <;> simp at h_ab; · grind
+        subst h_cd
+        simp at h_ab
+        rcases h_ab with ⟨h_eq1, h_eq2, h_eq3⟩
+        subst h_eq1 h_eq2 h_eq3
+        right
+        exists [], ys, tail'
+      | cons y ys =>
+        simp at h_cd
+        subst h_cd
+        simp at h_ab
+        rcases h_ab with ⟨h_eq1, h_eq2⟩
+        subst h_eq1
+        rw [←h_eq2] at ih
+        cases (ih (l := ys ++ c :: d :: tail) (init := ys) rfl rfl) <;> grind
+
+lemma rel_clos_weaken {A} {R S : A → A → Prop} {x y : A} :
+  (∀x y, R x y → S x y) →
+  (R*) x y →
+  (S*) x y :=
+  by
+    introv h_subset h_clos
+    induction h_clos with
+    | refl => constructor
+    | @tail z w h_clos h_infix ih =>
+      apply Relation.ReflTransGen.tail ih
+      apply h_subset
+      assumption
+
+-- TODO: Check if we can't just derive the new premise from wf_history
+lemma wf_cown_history_connected {H} {bid1 bid2} {mid tail} :
+    let adjacent_c_r := fun ch e1 e2 =>
+      ∃bid1, e1 = Event.Complete bid1 ∧
+      ∃bid2, e2 = Event.Run bid2 ∧
+      ∃init tail, ch = init ++ e1 :: e2 :: tail
+    (⊢ H) →
+    (∀e, e ∈ Event.Run bid1 :: mid ++ Event.Complete bid2 :: tail →
+      ∃bid, e ∈ H.behaviors bid) →
+    wf_cown_history (Event.Run bid1 :: mid ++ Event.Complete bid2 :: tail) →
+    (((model_from_history H).po ∪ adjacent_c_r
+        (Event.Run bid1 :: mid ++ Event.Complete bid2 :: tail)) * ) (.Run bid1) (.Complete bid2) :=
+  by
+    introv adj h_wf h_corr h_wf_c
+    generalize h_len : mid.length = n
+    induction n using Nat.strongRecOn generalizing mid bid1 with
+    | ind n ih =>
+      cases mid with
+      | nil =>
+        clear ih
+        simp [wf_cown_history] at h_wf_c
+        rw [←h_wf_c.1]
+        have h_clos : ((model_from_history H).po*) (.Run bid1) (.Complete bid1) := by
+          have h_mem_ex := h_corr (.Complete bid1) (by simp [h_wf_c.1])
+          rcases h_mem_ex with ⟨bid', h_mem⟩
+          have h_eq : bid' = bid1 :=
+            wf_history_complete_mem_inv (h_wf.1 bid') h_mem
+          subst h_eq
+          exact model_from_history_po_run_to_complete h_wf h_mem
+        apply rel_clos_weaken ?_ h_clos
+        · introv h_po
+          left
+          assumption
+      | cons e mid' =>
+        rcases e with _ | _ | bid1' <;> simp [wf_cown_history] at h_wf_c
+        rcases h_wf_c with ⟨h_bid_eq, h_wf_c', _⟩
+        subst h_bid_eq
+        cases mid' with
+        | nil => simp [wf_cown_history] at h_wf_c'
+        | cons e' mid'' =>
+          rcases e' with _ | bid | bid <;> simp [wf_cown_history] at h_wf_c'
+          have h_len' : mid''.length < n := by grind
+          have h_corr' :
+              ∀e, e ∈ Event.Run bid :: mid'' ++ Event.Complete bid2 :: tail →
+                ∃bid', e ∈ H.behaviors bid' := by
+            intro e h_mem
+            have h_mem_big :
+                e ∈ [Event.Run bid1, Event.Complete bid1] ++
+                  (Event.Run bid :: mid'' ++ Event.Complete bid2 :: tail) := by
+              apply List.mem_append.mpr
+              right
+              simpa using h_mem
+            apply h_corr e
+            simpa [List.append_assoc] using h_mem_big
+          have h_clos := ih (mid''.length) h_len' h_corr' h_wf_c' rfl
+          have h_clos_po : ((model_from_history H).po*) (.Run bid1) (.Complete bid1) := by
+            have h_mem_ex := h_corr (.Complete bid1) (by simp)
+            rcases h_mem_ex with ⟨bid', h_mem⟩
+            have h_eq : bid' = bid1 :=
+              wf_history_complete_mem_inv (h_wf.1 bid') h_mem
+            subst h_eq
+            exact model_from_history_po_run_to_complete h_wf h_mem
+
+          -- cheat takes .Run bid1 to .Complete bid1
+          -- a single step of adj takes .Complete bid1 to .Run bid
+          -- h_clos takes .Run bid to .Complete bid2
+          -- TODO: Have a look at what Copilot did below and clean up
+          let ch_small := Event.Run bid :: mid'' ++ Event.Complete bid2 :: tail
+          let ch_big :=
+            Event.Run bid1 ::
+            Event.Complete bid1 ::
+            Event.Run bid ::
+            (mid'' ++ Event.Complete bid2 :: tail)
+          have h_lift :
+              ∀ {u v},
+                (((model_from_history H).po ∪ adj ch_small) * ) u v →
+                (((model_from_history H).po ∪ adj ch_big) * ) u v := by
+            intro u v h_rel
+            induction h_rel with
+            | refl =>
+              exact Relation.ReflTransGen.refl
+            | @tail z w h_prev h_step ih =>
+              have h_step' : ((model_from_history H).po ∪ adj ch_big) z w := by
+                cases h_step with
+                | inl h_po =>
+                  exact Or.inl h_po
+                | inr h_adj =>
+                  rcases h_adj with ⟨bid1', h_eq1, bid2', h_eq2, init, tail', h_eq⟩
+                  refine Or.inr ?_
+                  refine ⟨
+                    bid1', h_eq1,
+                    bid2', h_eq2,
+                    Event.Run bid1 :: Event.Complete bid1 :: init,
+                    tail',
+                    ?_
+                  ⟩
+                  simpa [ch_small, ch_big, List.append_assoc] using h_eq
+              exact Relation.ReflTransGen.tail ih h_step'
+          have h_clos' :
+              (((model_from_history H).po ∪ adj ch_big) * ) (.Run bid) (.Complete bid2) := by
+            exact h_lift (by simpa [ch_small] using h_clos)
+          have h_adj_step : adj ch_big (.Complete bid1) (.Run bid) := by
+            refine ⟨
+              bid1, rfl,
+              bid, rfl,
+              [Event.Run bid1],
+              mid'' ++ (Event.Complete bid2 :: tail),
+              ?_
+            ⟩
+            simp [ch_big]
+          have h_run_to_run :
+              (((model_from_history H).po ∪ adj ch_big) * ) (.Run bid1) (.Run bid) := by
+            refine Relation.ReflTransGen.tail ?_ (Or.inr h_adj_step)
+            exact rel_clos_weaken (fun _ _ h_po => Or.inl h_po) h_clos_po
+          exact Relation.ReflTransGen.trans h_run_to_run h_clos'
+
+
+lemma wf_cown_history_connected_middle {H : History} {c : Cown} {bid1 bid2 : BId}
+                                       {init mid tail : List Event} :
+    (⊢ H) →
+    wf_cown_history (H.cowns c) →
+    H.cowns c = init ++ .Run bid1 :: mid ++ .Complete bid2 :: tail →
+    (((model_from_history H).po ∪ (model_from_history H).co c) * ) (.Run bid1) (.Complete bid2) :=
+  by
+    intro h_wf h_wf_c h_eq
+    have h_wf_c' : wf_cown_history (.Run bid1 :: mid ++ .Complete bid2 :: tail) := by
+      rw [h_eq] at h_wf_c
+      apply wf_cown_history_append_inv (init := init)
+      simpa using h_wf_c
+    -- TODO: Check for shorter proof
+    have h_corr' :
+        ∀e, e ∈ Event.Run bid1 :: mid ++ Event.Complete bid2 :: tail →
+          ∃bid, e ∈ H.behaviors bid := by
+      intro e h_mem
+      have h_mem_cown : e ∈ H.cowns c := by
+        rw [h_eq]
+        have h_suffix :
+            e ∈ init ++ (Event.Run bid1 :: mid ++ Event.Complete bid2 :: tail) := by
+          apply List.mem_append.mpr
+          right
+          exact h_mem
+        simpa [List.append_assoc] using h_suffix
+      exact h_wf.2.2.2.1 c e h_mem_cown
+    have h_clos := wf_cown_history_connected h_wf h_corr' h_wf_c'
+    apply rel_clos_weaken ?_ h_clos
+    · intros x y h_clos
+      cases h_clos with
+      | inl h_po =>
+        left
+        assumption
+      | inr h_adj =>
+        right
+        rcases h_adj with ⟨bid1', h_eq1, bid2', h_eq2, init', tail', h_eq⟩
+        subst h_eq1 h_eq2
+        simp [model_from_history]
+        grind
+
 lemma model_from_history_single_causal_path {H : History} :
     (⊢ H) →
     match model_from_history H with
@@ -401,23 +751,25 @@ lemma model_from_history_single_causal_path {H : History} :
     rcases h_34 with ⟨bid3, h_eq3, bid4, h_eq4, init', tail', h_mid'⟩
     subst h_eq1 h_eq2 h_eq3 h_eq4
     have h_wf_c : wf_cown_history (H.cowns c) := h_cowns c
-    generalize h_eq : H.cowns c = cs
-    rw [h_eq] at h_mid h_mid'
-/-
-    -- TODO: This could work, but needs generalization
-    induction cs using wf_cown_history.induct with
-    | case1 =>
-      rw [h_eq] at *
-      simp at h_mid
-    | case2 bid =>
-      rw [h_eq] at *
-      rcases init <;> simp at h_mid
-    | case3 bid bid' es ih =>
-    -- TODO: We are going from Run to Complete via po, and from Complete to Run
-    -- via co. We will make progress from or the other direction until we hit
-    -- the other Run.
-    -/
-    sorry
+    cases (list_annoying_inv (by grind) (by grind) (by grind) h_mid h_mid') with
+    | inl h_ex =>
+      left
+      rcases h_ex with ⟨init, ⟨mid, ⟨tail, h_eq⟩⟩⟩
+      have h_eq' : (init ++ Event.Complete bid1 :: Event.Run bid2 :: mid) =
+                   ((init ++ [Event.Complete bid1]) ++ Event.Run bid2 :: mid) := by
+        simp
+      rw [h_eq'] at h_eq
+      apply wf_cown_history_connected_middle (by and_intros <;> grind) h_wf_c h_eq
+    | inr h_ex =>
+      right
+      rcases h_ex with ⟨init, ⟨mid, ⟨tail, h_eq⟩⟩⟩
+      have h_eq' : (init ++ Event.Complete bid3 :: Event.Run bid4 :: mid) =
+                   ((init ++ [Event.Complete bid3]) ++ Event.Run bid4 :: mid) := by
+        simp
+      rw [h_eq'] at h_eq
+      apply wf_cown_history_connected_middle (by and_intros <;> grind) h_wf_c h_eq
+
+------------------------------------------
 
 structure EventCoord where
   parent : BId
@@ -978,7 +1330,12 @@ lemma spawn_lt_po_co_r_clos' {H : History} {e1 e2 : Event} :
           simp at *
           cases e1 with
           | Spawn bid1 =>
-            simp at ih ⊢
+            have h_co_lt : bid1' < bid2 := by
+              have h_wf_c : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+              rw [h_eq] at h_wf_c
+              exact wf_cown_history_middle_lt h_wf_c
+            have h_src : ∀ bid, Event.Spawn bid1 ∈ H.behaviors bid → bid ≤ bid1' := ih
+            sorry
 
           | Run bid1 =>
             sorry
@@ -993,7 +1350,7 @@ inductive bounded_causality (H : History) : Nat → Event → Event → Prop
 | refl : ∀n e,
     (match e with
      | .Spawn bid => n < bid
-     | _ => True) →
+     | _ => True) → -- TODO: Could add "n < bid" for all spawns after a Run,
     bounded_causality H n e e
 | po_run : ∀n bid e1 e2,
     bounded_causality H n e1 e2 →
@@ -1014,6 +1371,34 @@ inductive bounded_causality (H : History) : Nat → Event → Event → Prop
     (derived_run_relation (model_from_history H)) (.Spawn bid) e1 →
     bounded_causality H n (.Spawn bid) e2
 
+-- Right-extending variant of bounded_causality
+-- This follows the same shape as Relation.TransGen.tail: accumulate steps on the right
+inductive bounded_causality' (H : History) : Nat → Event → Event → Prop
+| refl : ∀n e,
+    (match e with
+     | .Spawn bid => n = bid
+     | .Run bid => bid ≤ n
+     | .Complete bid => bid ≤ n
+     ) →
+    bounded_causality' H n e e
+| snoc_po_spawn : ∀n bid e1 e2,
+    bounded_causality' H n e1 e2 →
+    (model_from_history H).po e2 (.Spawn bid) →
+    n < bid →
+    bounded_causality' H bid e1 (.Spawn bid)
+| snoc_po_complete : ∀n e1 e2 bid,
+    bounded_causality' H n e1 e2 →
+    (model_from_history H).po e2 (.Complete bid) →
+    bounded_causality' H n e1 (.Complete bid)
+| snoc_co : ∀n c e1 e2 e3,
+    bounded_causality' H n e1 e2 →
+    (model_from_history H).co c e2 e3 →
+    bounded_causality' H n e1 e3
+| snoc_r : ∀n e1 e2,
+    bounded_causality' H n e1 e2 →
+    (derived_run_relation (model_from_history H)) e2 (.Run n) →
+    bounded_causality' H n e1 (.Run n)
+
 lemma bounded_causality_spawn_tail {H : History} {n : Nat} {e : Event} {bid : BId} :
     bounded_causality H n e (.Spawn bid) →
     n < bid :=
@@ -1023,6 +1408,82 @@ lemma bounded_causality_spawn_tail {H : History} {n : Nat} {e : Event} {bid : BI
     rw [h_eq] at h_bc
     induction h_bc generalizing bid <;> grind
 
+lemma bounded_causality_spawn_tail' {H : History} {n : Nat} {e : Event} {bid : BId} :
+    bounded_causality' H n e (.Spawn bid) →
+    n = bid :=
+  by
+    intro h_bc
+    generalize h_eq : (Event.Spawn bid) = e2
+    rw [h_eq] at h_bc
+    induction h_bc generalizing bid <;> try grind
+    subst h_eq -- TODO: Clean this up
+    simp [model_from_history] at *
+
+lemma bounded_causality_spawn_head {H : History} {n : Nat} {e : Event} {bid : BId} :
+    bounded_causality' H n (.Spawn bid) e →
+    bid ≤ n :=
+  by
+    intro h_bc
+    generalize h_eq : (Event.Spawn bid) = e1
+    rw [h_eq] at h_bc
+    induction h_bc with
+    | refl _ _ h_match =>
+      grind
+    | snoc_po_spawn n' bid' e1 e2 h_bc h_lt h_po ih =>
+      subst h_eq
+      simp at ih
+      grind
+    | snoc_po_complete n' e1 e2 bid' h_bc h_po ih =>
+      subst h_eq
+      simp at ih
+      assumption
+    | snoc_co n' c e1 e2 e3 h_bc h_co ih =>
+      simp [model_from_history] at h_co
+      subst h_eq
+      simp at ih
+      assumption
+    | snoc_r n' e1 e2 h_bc h_r ih =>
+      simp [model_from_history, derived_run_relation] at h_r
+      subst h_eq
+      simp at ih
+      assumption
+
+lemma bounded_causality_spawn_lt' {H : History} {n : Nat} {bid1 bid2 : BId} :
+    bounded_causality' H n (.Spawn bid1) (.Spawn bid2) →
+    bid1 ≠ bid2 →
+    bid1 < bid2 :=
+  by
+    intro h_bc n_neq
+    generalize h_eq1 : (Event.Spawn bid1) = e1
+    generalize h_eq2 : (Event.Spawn bid2) = e2
+    rw [h_eq1, h_eq2] at h_bc
+    induction h_bc generalizing bid2 with
+    | refl =>
+      subst h_eq1
+      simp at h_eq2
+      subst h_eq2
+      contradiction
+    | snoc_po_spawn n' bid e1' e2' h_bc h_po h_lt ih =>
+      simp [model_from_history] at h_po
+      subst h_eq1
+      simp at h_eq2
+      subst h_eq2
+      have h_le := bounded_causality_spawn_head h_bc
+      grind
+    | snoc_po_complete n' e1' e2' bid h_bc h_po ih =>
+      simp [model_from_history] at h_po
+      subst h_eq1
+      simp at h_eq2
+    | snoc_co n' c e1' e2' e3' h_bc h_co ih =>
+      simp [model_from_history] at h_co
+      subst h_eq1 h_eq2
+      simp at h_co
+    | snoc_r n' e1' e2' h_bc h_r ih =>
+      simp [model_from_history, derived_run_relation] at h_r
+      subst h_eq1
+      simp at h_eq2
+
+/-
 lemma bounded_causality_spawn_head {H : History} {n : Nat} {e : Event} {bid : BId} :
     bounded_causality H n (.Spawn bid) e →
     n < bid :=
@@ -1034,6 +1495,7 @@ lemma bounded_causality_spawn_head {H : History} {n : Nat} {e : Event} {bid : BI
     | r => grind
     | co x1 x2 x3 x4 x5 x6 h_co =>
       simp [model_from_history] at h_co
+-/
 
 lemma bounded_causality_spawn_lt {H : History} {n : Nat} {bid1 bid2 : BId} :
     bounded_causality H n (.Spawn bid1) (.Spawn bid2) →
@@ -1051,6 +1513,168 @@ lemma bounded_causality_spawn_lt {H : History} {n : Nat} {bid1 bid2 : BId} :
     | r n bid e1 e2 h_bc =>
       exact bounded_causality_spawn_tail h_bc
 
+lemma po_co_r_clos_bounded_causality' {H : History} {e1 e2 : Event} :
+    (⊢ H) →
+    let m := model_from_history H
+    let r := derived_run_relation m
+    let co' := fun e1 e2 => ∃c, m.co c e1 e2
+    ((m.po ∪ co' ∪ r)+) e1 e2 →
+    exists n, bounded_causality' H n e1 e2 :=
+  by
+    introv h_wf m_def r_def co_def h_clos
+    induction h_clos with
+    | @single e2' h_rel =>
+      cases h_rel with
+      | inl h_po_co =>
+        cases h_po_co with
+        | inl h_po =>
+          simp [m_def, model_from_history] at h_po
+          rcases h_po with ⟨bid, h_infix⟩
+          cases e1 with
+          | Spawn bid1 =>
+            cases e2' with
+            | Spawn bid2 =>
+              sorry -- Should follow from wf_history
+            | Run bid2 =>
+              have h_shape := wf_behavior_history_pair_inv (h_wf.1 bid) h_infix
+              simp at h_shape
+            | Complete bid2 =>
+              exists bid1
+              apply bounded_causality'.snoc_po_complete (bid := bid2)
+              · exact bounded_causality'.refl bid1 (.Spawn bid1) (by simp)
+              · exact ⟨bid, h_infix⟩
+          | Run bid1 =>
+            cases e2' with
+            | Spawn bid2 =>
+              have h_mem1 : .Run bid1 ∈ H.behaviors bid := by
+                rcases h_infix with ⟨init, tail, h_eq⟩
+                rw [← h_eq]
+                simp
+              have h_mem2 : .Spawn bid2 ∈ H.behaviors bid := by
+                rcases h_infix with ⟨init, tail, h_eq⟩
+                rw [← h_eq]
+                simp
+              have h_bid : bid = bid1 := wf_history_run_mem_inv (h_wf.1 bid) h_mem1
+              subst bid1
+              have h_lt : bid < bid2 := wf_history_spawn_mem_inv (h_wf.1 bid) h_mem2
+              exists bid2
+              apply bounded_causality'.snoc_po_spawn (n := bid) (e2 := .Run bid)
+              · exact bounded_causality'.refl bid (.Run bid) (by simp)
+              · exact ⟨bid, h_infix⟩
+              · exact h_lt
+            | Run bid2 =>
+              have h_shape := wf_behavior_history_pair_inv (h_wf.1 bid) h_infix
+              simp at h_shape
+            | Complete bid2 =>
+              have h_mem1 : .Run bid1 ∈ H.behaviors bid := by
+                rcases h_infix with ⟨init, tail, h_eq⟩
+                rw [← h_eq]
+                simp
+              have h_bid : bid = bid1 := wf_history_run_mem_inv (h_wf.1 bid) h_mem1
+              subst bid1
+              exists bid
+              apply bounded_causality'.snoc_po_complete (bid := bid2)
+              · exact bounded_causality'.refl bid (.Run bid) (by simp)
+              · exact ⟨bid, h_infix⟩
+          | Complete bid1 =>
+            cases e2' <;>
+              have h_shape := wf_behavior_history_pair_inv (h_wf.1 bid) h_infix <;>
+              simp at h_shape
+        | inr h_co =>
+          simp [co_def, m_def, model_from_history] at h_co
+          rcases h_co with ⟨c, bid1, h_eq1, bid2, h_eq2, init, tail, h_eq⟩
+          subst h_eq1 h_eq2
+          exists bid1
+          apply bounded_causality'.snoc_co (c := c) (e2 := .Complete bid1)
+          · exact bounded_causality'.refl bid1 (.Complete bid1) (by simp)
+          · simp [model_from_history]
+            exact ⟨init, tail, h_eq⟩
+      | inr h_r =>
+        simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+        rcases e1 with bid1 | _ | _ <;> rcases e2' with _ | bid2 | _ <;> simp at h_r
+        rcases h_r with ⟨h_eq, h_in1, h_in2⟩
+        subst h_eq
+        exists bid1
+        apply bounded_causality'.snoc_r bid1 (.Spawn bid1) (.Spawn bid1)
+        · constructor <;> simp
+        · simp [model_from_history, derived_run_relation]
+          grind
+    | @tail e1' e2' h_clos h_step ih =>
+      cases h_step with
+      | inl h_po_co =>
+        cases h_po_co with
+        | inl h_po =>
+          simp [m_def, model_from_history] at h_po
+          rcases h_po with ⟨bid, h_infix⟩
+          cases e2' with
+          | Spawn bid2 =>
+            cases e1' with
+            | Spawn bid1 =>
+              sorry -- Should hold
+            | Run bid1 =>
+              sorry
+            | Complete bid1 =>
+              have h_shape := wf_behavior_history_pair_inv (h_wf.1 bid) h_infix
+              simp at h_shape
+          | Run bid2 =>
+            have h_shape := wf_behavior_history_pair_inv (h_wf.1 bid) h_infix
+            simp at h_shape
+          | Complete bid2 =>
+            rcases ih with ⟨n, h_bc⟩
+            exists n
+            apply bounded_causality'.snoc_po_complete (bid := bid2)
+            · exact h_bc
+            · exact ⟨bid, h_infix⟩
+        | inr h_co =>
+          simp [co_def, m_def, model_from_history] at h_co
+          rcases h_co with ⟨c, bid1, h_eq1, bid2, h_eq2, init, tail, h_eq⟩
+          subst h_eq1 h_eq2
+          rcases ih with ⟨n, h_bc⟩
+          exists n
+          apply bounded_causality'.snoc_co (c := c) (e2 := .Complete bid1)
+          · exact h_bc
+          · simp [model_from_history]
+            exact ⟨init, tail, h_eq⟩
+      | inr h_r =>
+        -- TODO: Can probably be cleaned up
+        cases e1' with
+        | Spawn bid1 =>
+          cases e2' with
+          | Spawn bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+          | Run bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+            rcases h_r with ⟨h_eq, h_in1, h_in2⟩
+            rcases ih with ⟨n, h_bc⟩
+            have h_n : n = bid1 := bounded_causality_spawn_tail' h_bc
+            have h_rn : (derived_run_relation (model_from_history H)) (.Spawn bid1) (.Run n) := by
+              simp [derived_run_relation, model_from_history]
+              refine ⟨h_n.symm, h_in1, ?_⟩
+              simpa [h_n] using h_in2
+            have h_bc_run : bounded_causality' H n e1 (.Run n) :=
+              bounded_causality'.snoc_r n e1 (.Spawn bid1) h_bc h_rn
+            have h_n2 : n = bid2 := Eq.trans h_n h_eq
+            exists n
+            simpa [h_n2] using h_bc_run
+          | Complete bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+        | Run bid1 =>
+          cases e2' with
+          | Spawn bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+          | Run bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+          | Complete bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+        | Complete bid1 =>
+          cases e2' with
+          | Spawn bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+          | Run bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+          | Complete bid2 =>
+            simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
+
 -- TODO: Assume that there is an external bound
 lemma po_co_r_clos_bounded_causality {H : History} {e1 e2 : Event} :
     (⊢ H) →
@@ -1062,32 +1686,41 @@ lemma po_co_r_clos_bounded_causality {H : History} {e1 e2 : Event} :
   by
     introv h_wf m_def r_def co_def h_clos
     induction h_clos with
-    | single h_rel =>
+    | @single e2' h_rel =>
       cases h_rel with
       | inl h_po_co =>
         cases h_po_co with
         | inl h_po =>
           simp [m_def, model_from_history] at h_po
-          sorry
+          sorry -- Should hold
         | inr h_co =>
           simp [co_def, m_def, model_from_history] at h_co
-          sorry
+          rcases h_co with ⟨c, bid1, h_eq1, bid2, h_eq2, init, tail, h_eq⟩
+          subst h_eq1 h_eq2
+          sorry -- Should hold, but we could make this stronger
       | inr h_r =>
         simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
-        sorry
+        rcases e1 with bid1 | _ | _ <;> rcases e2' with _ | bid2 | _ <;> simp at h_r
+        rcases h_r with ⟨h_eq, h_in1, h_in2⟩
+        subst h_eq
+        sorry -- Should, hold
     | @tail e1' e2' h_clos h_step ih =>
       cases h_step with
       | inl h_po_co =>
         cases h_po_co with
         | inl h_po =>
           simp [m_def, model_from_history] at h_po
-          sorry
+          sorry -- Proceed by cases on e1' and e2'
         | inr h_co =>
           simp [co_def, m_def, model_from_history] at h_co
-          sorry
+          rcases h_co with ⟨c, bid1, h_eq1, bid2, h_eq2, init, tail, h_eq⟩
+          subst h_eq1 h_eq2
+          sorry -- Hmm, we're sort of going the "wrong way", looking left-to-right in bounded_causality, but right-to-left in the closure
       | inr h_r =>
         simp [r_def, m_def, model_from_history, derived_run_relation] at h_r
-        rcases e1' <;> rcases e2' <;> simp at h_r ⊢
+        rcases e1' with bid1 | _ | _ <;> rcases e2' with _ | bid2 | _ <;> simp at h_r ⊢
+        rcases h_r with ⟨h_eq, h_in1, h_in2⟩
+        subst h_eq
         sorry
 
 lemma event_coord_lt_hb {e1 e2 : Event} {H : History} :
@@ -1116,14 +1749,14 @@ lemma event_coord_lt_hb {e1 e2 : Event} {H : History} :
       let co' := fun e1 e2 => ∃c, m.co c e1 e2
       ((m.po ∪ co' ∪ r)+) (.Spawn bid1') (.Spawn bid2')) := by
       simpa [model_from_history]
-    have ⟨n, h_bound⟩ := po_co_r_clos_bounded_causality h_wf h_po_co_r'
+    have ⟨n, h_bound⟩ := po_co_r_clos_bounded_causality' h_wf h_po_co_r'
     --have h_lt_bid : bid1' < bid2' := spawn_lt_po_co_r_clos h_wf h_po_co_r' -- TODO: This is currently cheated
     have ⟨c1, c2, h_coord1, h_coord2, h_lt⟩ := event_coord_lt_po_co_r_clos h_wf h_po_co_r'
     have ⟨c1', h_coord1', h_eq1⟩ := mem_has_coord h_in1
     have ⟨c2', h_coord2', h_eq2⟩ := mem_has_coord h_in2
     have h_neq := event_coord_lt_different_events h_wf h_coord1 h_coord2 h_lt
     have h_neq' : bid1' ≠ bid2' := by grind
-    have h_lt' : bid1' < bid2' := bounded_causality_spawn_lt h_bound h_neq'
+    have h_lt' : bid1' < bid2' := bounded_causality_spawn_lt' h_bound h_neq'
     subst h_eq1 h_eq2
     exists c1', c2'
     and_intros

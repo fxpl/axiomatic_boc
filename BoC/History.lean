@@ -167,7 +167,7 @@ def History.wf (H : History) : Prop :=
   ∧
   -- Spawns of cown ordered events are fully ordered
   (∀bid1 bid2 c e1 e2,
-     [.Complete bid1, .Run bid2] <:+: H.cowns c →
+     [.Complete bid1, .Run bid2].Sublist (H.cowns c) →
      is_spawn e1 →
      is_spawn e2 →
      e1 ∈ H.behaviors bid1 →
@@ -250,6 +250,60 @@ theorem wf_cown_history_no_dup {es} :
         simp [wf_cown_history] at h_wf
       | _ =>
         simp [wf_cown_history] at h_wf
+
+theorem wf_cown_history_middle_inv {init tail bid1 bid2} :
+    wf_cown_history (init ++ .Run bid1 :: .Complete bid2 :: tail) →
+    bid1 = bid2 :=
+  by
+    intro h_wf
+    induction init using wf_cown_history.induct with
+    | case1 =>
+      simp at h_wf
+      rcases h_wf with ⟨h_eq, _, _⟩
+      subst h_eq
+      simp
+    | case2 bid =>
+      simp [wf_cown_history] at h_wf
+    | case3 bid3 bid4 init' ih =>
+      simp at h_wf
+      rcases h_wf with ⟨h_eq, h_wf_tail, h_lt⟩
+      subst h_eq
+      exact ih h_wf_tail
+    | case4 init' not_empty not_just_run not_r_c =>
+      cases init' with
+      | nil => contradiction
+      | cons e init'' =>
+        rcases e <;> simp [wf_cown_history] at *
+        cases init'' with
+        | nil => contradiction
+        | cons e' init''' =>
+          rcases e' <;> simp [wf_cown_history] at *
+
+theorem wf_cown_history_append_inv {init tail bid} :
+    wf_cown_history (init ++ .Run bid :: tail) →
+    wf_cown_history (.Run bid :: tail) :=
+  by
+    intro h_wf
+    induction init using wf_cown_history.induct with
+    | case1 =>
+      simp at h_wf
+      exact h_wf
+    | case2 bid =>
+      simp [wf_cown_history] at h_wf
+    | case3 bid3 bid4 init' ih =>
+      simp at h_wf
+      rcases h_wf with ⟨h_eq, h_wf_tail, h_lt⟩
+      subst h_eq
+      exact ih h_wf_tail
+    | case4 init' not_empty not_just_run not_r_c =>
+      cases init' with
+      | nil => contradiction
+      | cons e init'' =>
+        rcases e <;> simp [wf_cown_history] at *
+        cases init'' with
+        | nil => contradiction
+        | cons e' init''' =>
+          rcases e' <;> simp [wf_cown_history] at *
 
 theorem wf_history_spawn_fresh H {bid fresh : BId} :
     (⊢ H) →
