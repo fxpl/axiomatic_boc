@@ -67,6 +67,18 @@ theorem Event.lt_neq (e1 e2 : Event) :
     intro h_lt
     rcases e1 <;> rcases e2 <;> simp at h_lt <;> grind
 
+-- TODO: Move to Common.lean
+instance BIdDecEq : DecidableEq BId := by
+  intros bid1 bid2
+  apply Nat.decEq
+
+instance EventDecEq : DecidableEq Event := by
+  intros e1 e2
+  rcases e1 with bid1 | bid1 | bid1 <;>
+  rcases e2 with bid2 | bid2 | bid2 <;>
+  simp <;> (try apply BIdDecEq)
+       <;> apply isFalse <;> simp
+
 -- A history maps behavior IDs and cowns to the events they have been involved
 -- in. An empty event list means the behavior or cown has not been run/used yet.
 structure History where
@@ -151,6 +163,29 @@ def unique_spawns (h : BId → List Event) : Prop :=
     .Spawn bid ∈ h bid1 →
     .Spawn bid ∉ h bid2
 
+def History.events (H : History) : Set Event :=
+  {e | ∃bid, e ∈ H.behaviors bid}
+
+def History.timestamp_wf (H : History) (t : Event → Nat) : Prop :=
+  -- Time increases along adjacent behavior/cown history events and spawn->run.
+  (∀bid e1 e2, [e1, e2] <:+: H.behaviors bid → t e1 < t e2)
+  ∧
+  (∀c e1 e2, [e1, e2] <:+: H.cowns c → t e1 < t e2)
+  ∧
+  (∀parent bid,
+     .Spawn bid ∈ H.behaviors parent →
+     .Run bid ∈ H.behaviors bid →
+    t (.Spawn bid) < t (.Run bid))
+  ∧
+  -- This corresponds to happens-before
+  -- TODO: Can we prove preservation of this?
+  -- TODO: Could maybe involve Run bid1 as well?
+  (∀c bid1 bid2,
+    t (.Spawn bid1) < t (.Spawn bid2) →
+    .Complete bid1 ∈ H.cowns c →
+    .Run bid2 ∈ H.cowns c →
+    t (.Complete bid1) < t (.Run bid2))
+
 @[simp]
 def History.wf (H : History) : Prop :=
   -- Behavior histories are well-formed
@@ -165,14 +200,11 @@ def History.wf (H : History) : Prop :=
   -- Every cown event corresponds to some behavior event
   (∀c e, e ∈ H.cowns c → ∃bid, e ∈ H.behaviors bid)
   ∧
-  -- Spawns of cown ordered events are fully ordered
-  (∀bid1 bid2 c e1 e2,
-     [.Complete bid1, .Run bid2].Sublist (H.cowns c) →
-     is_spawn e1 →
-     is_spawn e2 →
-     e1 ∈ H.behaviors bid1 →
-     e2 ∈ H.behaviors bid2 →
-     e1 < e2)
+  -- If a behavior ran on a cown and later completed, the completion appears in that cown's history
+  (∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c)
+  ∧
+  -- There exists a global timestamping that is monotone on history edges.
+  (∃t top, History.timestamp_wf H t ∧ ∀e ∈ History.events H, t e ≤ top)
 
 notation "⊢" H => History.wf H
 
@@ -199,7 +231,7 @@ private def cyclic_history : History :=
 example : ¬ (⊢ cyclic_history) :=
   by
     intros h_contra
-    rcases h_contra with ⟨h_bid, h_unique, h_cown, h_corr⟩
+    rcases h_contra with ⟨h_bid, h_unique, h_cown, h_corr, _, _⟩
     rcases h_bid 1 with ⟨_, ⟨spawns, tail, h_eq, h_spawns, h_tail⟩⟩
     cases spawns with
     | nil =>
@@ -216,7 +248,31 @@ example : ¬ (⊢ cyclic_history) :=
 theorem empty_history_wf :
   ⊢ History.empty :=
   by
-    simp [History.wf, wf_behavior_history, wf_cown_history, unique_spawns]
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+    · intro bid
+      simp [wf_behavior_history]
+    · intro bid1 bid2 bid h_ne h_mem
+      simp at h_mem
+    · intro c
+      simp [wf_cown_history]
+    · intro c e h_mem
+      simp at h_mem
+    · intro c bid h_mem
+      simp at h_mem
+    · refine ⟨(fun _ => 0), 0, ?_, ?_⟩
+      · refine ⟨?_, ?_, ?_, ?_⟩
+        · intro bid e1 e2 h_adj
+          simp at h_adj
+        · intro c e1 e2 h_adj
+          simp at h_adj
+        · intro parent bid h_spawn _
+          simp at h_spawn
+        · intro c bid1 bid2 _ h_complete h_run
+          simp at h_complete
+      · intro e h_mem
+        have h_false : False := by
+          simpa [History.events] using h_mem
+        exact False.elim h_false
 
 theorem empty_history_complete :
     History.complete History.empty :=
@@ -305,6 +361,41 @@ theorem wf_cown_history_append_inv {init tail bid} :
         | cons e' init''' =>
           rcases e' <;> simp [wf_cown_history] at *
 
+-- Any Complete in a well-formed cown history is immediately preceded by the
+-- matching Run:  init = init' ++ [Run bid1].
+theorem wf_cown_history_complete_pred {init rest bid1} :
+    wf_cown_history (init ++ .Complete bid1 :: rest) →
+    ∃ init', init = init' ++ [.Run bid1] :=
+  by
+    intro h_wf
+    induction init using wf_cown_history.induct with
+    | case1 =>
+      simp [wf_cown_history] at h_wf
+    | case2 bid =>
+      -- init = [Run bid], list is Run bid :: Complete bid1 :: rest
+      simp [wf_cown_history] at h_wf
+      exact ⟨[], by simp [h_wf.1]⟩
+    | case3 bid3 bid4 init' ih =>
+      simp at h_wf
+      rcases h_wf with ⟨h_eq, h_wf_tail, _⟩
+      subst h_eq
+      cases init' with
+      | nil =>
+        -- init' = [] means wf_cown_history (Complete bid1 :: rest) which is False
+        simp [wf_cown_history] at h_wf_tail
+      | cons _ _ =>
+        have ⟨init'', h_eq⟩ := ih h_wf_tail
+        exact ⟨.Run bid3 :: .Complete bid3 :: init'', by simp [h_eq]⟩
+    | case4 cs h_nil h_run h_rc =>
+      cases cs with
+      | nil => simp at h_nil
+      | cons e cs' =>
+        cases cs' with
+        | nil =>
+          rcases e <;> simp [wf_cown_history] at *
+        | cons e' cs'' =>
+          rcases e <;> rcases e' <;> simp [wf_cown_history] at *
+
 theorem wf_history_spawn_fresh H {bid fresh : BId} :
     (⊢ H) →
     Event.Run bid ∈ H.behaviors bid →
@@ -313,7 +404,7 @@ theorem wf_history_spawn_fresh H {bid fresh : BId} :
   by
     introv h_wf h_run h_fresh
     simp [History.wf]
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_cown_complete, h_time⟩
     and_intros <;> try (solve | grind)
     · intros bid'
       by_cases h_eq : bid' = bid
@@ -673,7 +764,7 @@ lemma wf_history_event_unique {H bid1 bid2 e} :
     bid1 = bid2 :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _⟩
     intro h_mem1 h_mem2
     cases e with
     | Spawn bid =>
