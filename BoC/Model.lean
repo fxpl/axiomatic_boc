@@ -226,7 +226,7 @@ lemma model_from_history_po_unique_pred {H : History} :
       e1 = e2 :=
   by
     intro h_wf e1 e2 e3 h13 h23
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, _, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, h_twf, _⟩
     rcases h13 with ⟨bid1, h_infix1⟩
     rcases h23 with ⟨bid2, h_infix2⟩
     have h_disj : is_spawn e3 ∨ is_complete e3 := by
@@ -248,7 +248,7 @@ lemma model_from_history_po_unique_pred {H : History} :
         by_cases (bid1 = bid2) <;> grind
       subst h_eq
       have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-        exact wf_behavior_history_no_dup (h_behaviors bid1)
+        exact wf_behavior_history_no_dup (h_behaviors bid1) (h_twf.1 bid1)
       exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
     | inr h_complete =>
       have h_mem1 : e3 ∈ H.behaviors bid1 := by
@@ -264,7 +264,7 @@ lemma model_from_history_po_unique_pred {H : History} :
         grind [wf_history_complete_mem_inv]
       subst h_eq
       have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-        exact wf_behavior_history_no_dup (h_behaviors bid1)
+        exact wf_behavior_history_no_dup (h_behaviors bid1) (h_twf.1 bid1)
       exact no_dup_pair_eq_l h_no_dup h_infix1 h_infix2
 
 lemma model_from_history_po_unique_succ {H : History} :
@@ -275,7 +275,7 @@ lemma model_from_history_po_unique_succ {H : History} :
       e2 = e3 :=
   by
     intro h_wf e1 e2 e3 h12 h13
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, _, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, h_twf, _⟩
     rcases h12 with ⟨bid1, h_infix1⟩
     rcases h13 with ⟨bid2, h_infix2⟩
     have h_disj : is_run e1 ∨ is_spawn e1 := by
@@ -296,7 +296,7 @@ lemma model_from_history_po_unique_succ {H : History} :
         grind [wf_history_run_mem_inv]
       subst h_eq
       have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-        exact wf_behavior_history_no_dup (h_behaviors bid1)
+        exact wf_behavior_history_no_dup (h_behaviors bid1) (h_twf.1 bid1)
       exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
     | inr h_spawn =>
       have h_mem1 : e1 ∈ H.behaviors bid1 := by
@@ -313,7 +313,7 @@ lemma model_from_history_po_unique_succ {H : History} :
         by_cases (bid1 = bid2) <;> grind
       subst h_eq
       have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid1) := by
-        exact wf_behavior_history_no_dup (h_behaviors bid1)
+        exact wf_behavior_history_no_dup (h_behaviors bid1) (h_twf.1 bid1)
       exact no_dup_pair_eq_r h_no_dup h_infix1 h_infix2
 
 lemma model_from_history_po_preceded_by_run {H : History} :
@@ -323,12 +323,12 @@ lemma model_from_history_po_preceded_by_run {H : History} :
       ∃ bid, ((model_from_history H).po*) (.Run bid) e :=
   by
     intro h_wf e h_in
-    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, _⟩
+    rcases h_wf with ⟨h_behaviors, _, _, _, _, h_twf, _⟩
     rcases h_in with ⟨bid, h_in_bid⟩
     refine ⟨bid, ?_⟩
     apply po_pick_bid (bid := bid)
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-      exact wf_behavior_history_no_dup (h_behaviors bid)
+      exact wf_behavior_history_no_dup (h_behaviors bid) (h_twf.1 bid)
     rw [pair_refl_trans_iff h_no_dup]
     have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_behaviors bid
     cases h_beh : H.behaviors bid with
@@ -361,10 +361,10 @@ lemma model_from_history_po_run_complete_same_bid {H : History} :
   by
     intro h_wf bid1 bid2 h_path
     have h_wf' : (t ⊢ H) := h_wf
-    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, _⟩
+    rcases h_wf with ⟨h_behaviors, _, _, _, _, h_twf, _⟩
     have ⟨bid, h_trans⟩ := po_exists_inv h_wf' h_path
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-      exact wf_behavior_history_no_dup (h_behaviors bid)
+      exact wf_behavior_history_no_dup (h_behaviors bid) (h_twf.1 bid)
     have h_sub := (pair_trans_iff h_no_dup).1 h_trans
     rw [pair_sublist_iff] at h_sub
     rcases h_sub with ⟨init, mid, tail, h_eq⟩
@@ -387,8 +387,9 @@ lemma model_from_history_trans_po_run_to_complete {H : History} {bid : BId} :
   by
     intro h_wf h_complete_mem
     have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.1 bid
+    have h_twf := h_wf.2.2.2.2.2.1
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-      exact wf_behavior_history_no_dup h_bwf
+      exact wf_behavior_history_no_dup h_bwf (h_twf.1 bid)
     apply po_trans_pick_bid (bid := bid)
     rw [pair_trans_iff h_no_dup]
     rw [pair_sublist_iff]
@@ -418,8 +419,9 @@ lemma model_from_history_po_run_to_complete {H : History} {bid : BId} :
   by
     intro h_wf h_complete_mem
     have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.1 bid
+    have h_twf := h_wf.2.2.2.2.2.1
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
-      exact wf_behavior_history_no_dup h_bwf
+      exact wf_behavior_history_no_dup h_bwf (h_twf.1 bid)
     apply po_pick_bid (bid := bid)
     rw [pair_refl_trans_iff h_no_dup]
     right
@@ -465,7 +467,7 @@ lemma model_from_history_wf_co {H : History} :
     wf_co_relation events co :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order, _, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order, h_ts, _⟩
     and_intros
     · introv h_co
       rcases h_co with ⟨bid1, bid2, init, tail, h_eq1, h_eq2, h_tail⟩
@@ -483,7 +485,7 @@ lemma model_from_history_wf_co {H : History} :
       subst h_eq11 h_eq12 h_eq21
       simp at h_eq22
       subst h_eq22
-      have h_no_dup := wf_cown_history_no_dup (h_cowns c)
+      have h_no_dup := pairwise_ne_of_pair_ordered (h_ts.2.1 c)
       rw [h_tail1] at *
       have h_eq : (init1 ++ [Event.Complete bid1]) ++ Event.Run bid2 :: tail1 =
                   (init2 ++ [Event.Complete bid3]) ++ Event.Run bid2 :: tail2 := by
@@ -497,7 +499,7 @@ lemma model_from_history_wf_co {H : History} :
       subst h_eq11 h_eq12 h_eq22
       simp at h_eq21
       subst h_eq21
-      have h_no_dup := wf_cown_history_no_dup (h_cowns c)
+      have h_no_dup := pairwise_ne_of_pair_ordered (h_ts.2.1 c)
       rw [h_tail1] at *
       have ⟨h_eq1, h_eq2⟩:= no_dup_middle_inv ?_ h_tail2 <;> try simpa
       simp at h_eq2
@@ -699,7 +701,7 @@ lemma wf_cown_history_connected {H} {bid1 bid2} {mid tail} :
           assumption
       | cons e mid' =>
         rcases e with _ | _ | bid1' <;> simp [wf_cown_history] at h_wf_c
-        rcases h_wf_c with ⟨h_bid_eq, h_wf_c', _⟩
+        rcases h_wf_c with ⟨h_bid_eq, h_wf_c'⟩
         subst h_bid_eq
         cases mid' with
         | nil => simp [wf_cown_history] at h_wf_c'
@@ -1101,7 +1103,7 @@ lemma wf_cown_history_complete_has_run {cs bid} :
     | case2 _ => simp at h_complete_mem
     | case3 bid1 bid2 cs' ih =>
       simp [wf_cown_history] at h_wfc
-      rcases h_wfc with ⟨h_bid_eq, h_wfc', _⟩
+      rcases h_wfc with ⟨h_bid_eq, h_wfc'⟩
       subst h_bid_eq
       grind
     | case4 cs' h_nil h_run ih =>
@@ -1166,7 +1168,7 @@ lemma wf_cown_history_run_has_complete_of_not_last_by_time
     exact False.elim (h_ne rfl)
   | case3 bid1 bid2 cs' ih =>
     simp [wf_cown_history] at h_wfc
-    rcases h_wfc with ⟨h_bid_eq, h_wfc', _h_order_tail⟩
+    rcases h_wfc with ⟨h_bid_eq, h_wfc'⟩
     subst h_bid_eq
     have h_run_cases : bid = bid1 ∨ Event.Run bid ∈ cs' := by
       simpa using h_run_mem
@@ -1584,12 +1586,13 @@ theorem model_from_history_complete {H : History} :
       rcases h_run_in with ⟨bid', h_in⟩
 
       apply po_trans_pick_bid (bid := bid)
+      have h_twf := h_wf.2.2.2.2.2.1
       have h_wf_b : wf_behavior_history bid' (H.behaviors bid') := by
         simp at h_wf
         grind
       have h_eq : bid' = bid := wf_history_run_mem_inv h_wf_b h_in
       subst h_eq
-      have h_no_dup := wf_behavior_history_no_dup h_wf_b
+      have h_no_dup := wf_behavior_history_no_dup h_wf_b (h_twf.1 bid')
       rw [pair_trans_iff h_no_dup]
       simp [History.complete] at h_complete
       have h_in' := h_complete.1 bid' h_in

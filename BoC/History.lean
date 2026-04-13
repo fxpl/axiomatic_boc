@@ -123,38 +123,29 @@ def wf_behavior_history_tail (bid : BId) : List Event → Prop
 | [.Complete bid'] => bid = bid'
 | _ => False
 
-def wf_behavior_history_spawns (bid : BId) : List Event → Prop
-| [] => True
-| .Spawn bid' :: es =>
-    bid < bid' ∧
-    (∀e ∈ es, (.Spawn bid' < e)) ∧
-    wf_behavior_history_spawns bid es
-| _ => False
-
 def wf_behavior_history (bid : BId) : List Event → Prop
 | [] => True
 | .Run bid' :: es =>
     bid = bid' ∧
     ∃spawns tail, es = spawns ++ tail ∧
-      wf_behavior_history_spawns bid spawns ∧
+  (∀e, e ∈ spawns → is_spawn e) ∧
       wf_behavior_history_tail bid tail
 | _ => False
 
 -- TODO: Could use this instead
-inductive WfBehaviorHistory (bid : BId) : List Event → Prop where
-| Empty :
-    WfBehaviorHistory bid []
-| NonEmpty {spawns tail} :
-    wf_behavior_history_spawns bid spawns →
-    wf_behavior_history_tail bid tail →
-    WfBehaviorHistory bid (.Run bid :: spawns ++ tail)
+-- inductive WfBehaviorHistory (bid : BId) : List Event → Prop where
+-- | Empty :
+--     WfBehaviorHistory bid []
+-- | NonEmpty {spawns tail} :
+--     (∀e, e ∈ spawns → is_spawn e) →
+--     wf_behavior_history_tail bid tail →
+--     WfBehaviorHistory bid (.Run bid :: spawns ++ tail)
 
 def wf_cown_history : List Event → Prop
 | [] => True
 | [.Run _] => True
 | .Run bid :: .Complete bid' :: es =>
-    bid = bid' ∧ wf_cown_history es ∧
-    ∀e ∈ es, (.Run bid < e)
+    bid = bid' ∧ wf_cown_history es
 | _ => False
 
 def unique_spawns (h : BId → List Event) : Prop :=
@@ -231,19 +222,25 @@ private def cyclic_history : History :=
 
 example (t : Event → Nat) : ¬ (t ⊢ cyclic_history) :=
   by
-    intros h_contra
-    rcases h_contra with ⟨h_bid, h_unique, h_cown, h_corr, _, _, _⟩
-    rcases h_bid 1 with ⟨_, ⟨spawns, tail, h_eq, h_spawns, h_tail⟩⟩
-    cases spawns with
-    | nil =>
-      simp at h_eq
-      subst h_eq
-      simp [wf_behavior_history_tail] at h_tail
-    | cons e spawns' =>
-      simp at h_eq
-      rcases h_eq with ⟨h_spawn, h_spawns_eq, h_tail_eq⟩
-      subst h_spawn h_spawns_eq
-      simp [wf_behavior_history_spawns] at h_spawns
+    intro h_contra
+    have h_twf := h_contra.2.2.2.2.2.1
+    have h_beh_twf := h_twf.1
+    have h_spawn_run_twf := h_twf.2.2.1
+    have h_infix01 : [Event.Run 0, Event.Spawn 1] <:+: cyclic_history.behaviors 0 := by
+      refine ⟨[], [], ?_⟩
+      simp [cyclic_history]
+    have h_infix10 : [Event.Run 1, Event.Spawn 0] <:+: cyclic_history.behaviors 1 := by
+      refine ⟨[], [], ?_⟩
+      simp [cyclic_history]
+    have h_r0_s1 : t (Event.Run 0) < t (Event.Spawn 1) := h_beh_twf 0 _ _ h_infix01
+    have h_r1_s0 : t (Event.Run 1) < t (Event.Spawn 0) := h_beh_twf 1 _ _ h_infix10
+    have h_s1_r1 : t (Event.Spawn 1) < t (Event.Run 1) := by
+      apply h_spawn_run_twf 0 1 <;> simp [cyclic_history]
+    have h_s0_r0 : t (Event.Spawn 0) < t (Event.Run 0) := by
+      apply h_spawn_run_twf 1 0 <;> simp [cyclic_history]
+    have h_loop : t (Event.Run 0) < t (Event.Run 0) := by
+      exact Nat.lt_trans h_r0_s1 (Nat.lt_trans h_s1_r1 (Nat.lt_trans h_r1_s0 h_s0_r0))
+    exact Nat.lt_irrefl _ h_loop
 
 -- TODO: Sort theorems and lemmas
 theorem empty_history_wf :
@@ -269,34 +266,6 @@ theorem empty_history_complete :
   by
     simp [History.complete]
 
-theorem wf_cown_history_no_dup {es} :
-    wf_cown_history es →
-    List.Pairwise (· ≠ ·) es :=
-  by
-    intro h_wf
-    have ⟨n, h_len⟩ : ∃n : Nat, es.length = n := ⟨es.length, rfl⟩
-    induction n using Nat.strongRecOn generalizing es with
-    | ind n ih =>
-      rcases es with _ | ⟨e, es'⟩ <;> simp
-      rcases es' with _ | ⟨e', es''⟩ <;> simp
-      cases e with
-      | Run bid =>
-        cases e' with
-        | Complete bid' =>
-          rcases h_wf with ⟨h_eq, h_wf_tail, h_lt⟩
-          subst h_eq
-          simp
-          and_intros <;> try grind [Event.lt_neq]
-          introv h_in
-          have := h_lt a' h_in
-          introv contra
-          subst contra
-          simp at *
-        | _ =>
-        simp [wf_cown_history] at h_wf
-      | _ =>
-        simp [wf_cown_history] at h_wf
-
 theorem wf_cown_history_middle_inv {init tail bid1 bid2} :
     wf_cown_history (init ++ .Run bid1 :: .Complete bid2 :: tail) →
     bid1 = bid2 :=
@@ -305,14 +274,14 @@ theorem wf_cown_history_middle_inv {init tail bid1 bid2} :
     induction init using wf_cown_history.induct with
     | case1 =>
       simp at h_wf
-      rcases h_wf with ⟨h_eq, _, _⟩
+      rcases h_wf with ⟨h_eq, _⟩
       subst h_eq
       simp
     | case2 bid =>
       simp [wf_cown_history] at h_wf
     | case3 bid3 bid4 init' ih =>
       simp at h_wf
-      rcases h_wf with ⟨h_eq, h_wf_tail, h_lt⟩
+      rcases h_wf with ⟨h_eq, h_wf_tail⟩
       subst h_eq
       exact ih h_wf_tail
     | case4 init' not_empty not_just_run not_r_c =>
@@ -338,7 +307,7 @@ theorem wf_cown_history_append_inv {init tail bid} :
       simp [wf_cown_history] at h_wf
     | case3 bid3 bid4 init' ih =>
       simp at h_wf
-      rcases h_wf with ⟨h_eq, h_wf_tail, h_lt⟩
+      rcases h_wf with ⟨h_eq, h_wf_tail⟩
       subst h_eq
       exact ih h_wf_tail
     | case4 init' not_empty not_just_run not_r_c =>
@@ -367,7 +336,7 @@ theorem wf_cown_history_complete_pred {init rest bid1} :
       exact ⟨[], by simp [h_wf.1]⟩
     | case3 bid3 bid4 init' ih =>
       simp at h_wf
-      rcases h_wf with ⟨h_eq, h_wf_tail, _⟩
+      rcases h_wf with ⟨h_eq, h_wf_tail⟩
       subst h_eq
       cases init' with
       | nil =>
@@ -428,43 +397,21 @@ lemma wf_history_tail_mem_inv {bid es} :
         subst h_in
         simp
 
-theorem wf_history_spawns_no_run {bid es} :
-    wf_behavior_history_spawns bid es →
+-- TODO: Remove this and prove inline instead (similar for several lemmas below)
+theorem wf_history_spawns_no_run {es : List Event} :
+    (∀e, e ∈ es → is_spawn e) →
     ∀e ∈ es, ¬is_run e :=
   by
-    introv h_spawns h_in
-    induction es with
-    | nil =>
-      simp at h_in
-    | cons e es' ih =>
-      simp at h_in
-      cases h_in with
-      | inl h_eq =>
-        subst h_eq
-        rcases e <;> simp [wf_behavior_history_spawns] at h_spawns ⊢
-      | inr h_in' =>
-        rcases e <;> simp [wf_behavior_history_spawns] at h_spawns ⊢
-        rcases h_spawns with ⟨h_lt, h_es_lt, h_spawns'⟩
-        apply ih <;> assumption
+    intro h_spawns e h_in
+    have h_is := h_spawns e h_in
+    rcases e <;> simp at h_is ⊢
 
-theorem wf_history_spawns_mem_inv {bid es} :
-    wf_behavior_history_spawns bid es →
+theorem wf_history_spawns_mem_inv {es : List Event} :
+    (∀e, e ∈ es → is_spawn e) →
     ∀e ∈ es, is_spawn e :=
   by
-    introv h_spawns h_in
-    induction es with
-    | nil =>
-      simp at h_in
-    | cons e es' ih =>
-      simp at h_in
-      cases h_in with
-      | inl h_eq =>
-        subst h_eq
-        rcases e <;> simp [wf_behavior_history_spawns] at h_spawns ⊢
-      | inr h_in' =>
-        rcases e <;> simp [wf_behavior_history_spawns] at h_spawns ⊢
-        rcases h_spawns with ⟨h_lt, h_es_lt, h_spawns'⟩
-        apply ih <;> assumption
+    intro h_spawns e h_in
+    exact h_spawns e h_in
 
 theorem wf_behavior_history_pair_inv {bid es e1 e2} :
     wf_behavior_history bid es ->
@@ -494,7 +441,8 @@ theorem wf_behavior_history_pair_inv {bid es e1 e2} :
         simp at h_split
         rcases h_split with ⟨h_eq, h_spawns_eq, h_tail_eq⟩
         subst h_eq
-        rcases e2 <;> simp [wf_behavior_history_spawns] at h_spawns ⊢
+        have h_e2_spawn : is_spawn e2 := h_spawns _ (by simp)
+        rcases e2 <;> simp at h_e2_spawn ⊢
     | cons e init' =>
       rcases e <;> simp at h_wf
       rcases h_wf with ⟨h_bid, spawns, tail', h_split, h_spawns, h_tail⟩
@@ -561,62 +509,23 @@ theorem wf_behavior_history_pair_inv {bid es e1 e2} :
         have contra := wf_history_spawns_mem_inv h_spawns _ h_mem
         simp at contra
 
-theorem wf_history_spawns_no_dup {bid es} :
-    wf_behavior_history_spawns bid es →
+theorem wf_history_spawns_no_dup {es : List Event} :
+    (∀e, e ∈ es → is_spawn e) →
+    {t : Event → Nat} →
+    (∀e1 e2, [e1, e2] <:+: es → t e1 < t e2) →
     List.Pairwise (· ≠ ·) es :=
   by
-    intro h_wf
-    induction es with
-    | nil =>
-      simp
-    | cons e es' ih =>
-      rcases e <;> simp [wf_behavior_history_spawns] at h_wf
-      rcases h_wf with ⟨h_lt, h_es_lt, h_spawns'⟩
-      simp
-      and_intros <;> grind
+    intro _ _ h_ts
+    exact pairwise_ne_of_pair_ordered h_ts
 
 theorem wf_behavior_history_no_dup {bid es} :
     wf_behavior_history bid es →
+    {t : Event → Nat} →
+    (∀e1 e2, [e1, e2] <:+: es → t e1 < t e2) →
     List.Pairwise (· ≠ ·) es :=
   by
-    intro h_wf
-    cases es with
-    | nil =>
-      simp
-    | cons e es' =>
-      cases e with
-      | Spawn bid'
-      | Complete bid' =>
-        simp [wf_behavior_history] at h_wf
-      | Run bid' =>
-        simp [wf_behavior_history] at h_wf
-        rcases h_wf with ⟨h_eq, init, tail, h_eq', h_spawns, h_tail⟩
-        subst h_eq
-        subst h_eq'
-        simp
-        and_intros
-        · introv h_or
-          cases h_or with
-          | inl h_in =>
-            have h_spawn := wf_history_spawns_mem_inv h_spawns _ h_in
-            rcases a' <;> simp at h_spawn ⊢
-          | inr h_in =>
-            have h_tail := wf_history_tail_mem_inv h_tail _ h_in
-            rcases a' <;> simp at h_tail ⊢
-        · cases tail with
-          | nil =>
-            simp
-            exact wf_history_spawns_no_dup h_spawns
-          | cons e tail' =>
-            rcases e <;> rcases tail' <;> simp [wf_behavior_history_tail] at h_tail
-            subst h_tail
-            refine List.pairwise_append.mpr ?_
-            and_intros <;> try simp
-            · exact wf_history_spawns_no_dup h_spawns
-            · introv h_in h_in'
-              subst h_in'
-              have h_spawn := wf_history_spawns_mem_inv h_spawns _ h_in
-              simp at h_spawn
+    intro _ _ h_ts
+    exact pairwise_ne_of_pair_ordered h_ts
 
 theorem wf_history_run_mem_inv {bid bid' es} :
     wf_behavior_history bid es →
@@ -646,57 +555,13 @@ theorem wf_history_run_mem_inv {bid bid' es} :
         · have contra := wf_history_tail_mem_inv h_tail _ h_in
           simp at contra
 
-lemma wf_history_spawns_lt_inv {bid bid' es} :
-    wf_behavior_history_spawns bid es →
-    .Spawn bid' ∈ es →
-    bid < bid' :=
-  by
-    intro h_wf h_in
-    cases es with
-    | nil =>
-      simp at h_in
-    | cons e es' =>
-      cases e with
-      | Spawn b =>
-        simp [wf_behavior_history_spawns] at h_wf
-        rcases h_wf with ⟨h_lt, h_es_lt, h_spawns⟩
-        simp at h_in
-        rcases h_in with rfl | h_in
-        · exact h_lt
-        · have h_tail_lt : Event.Spawn b < Event.Spawn bid' := h_es_lt _ h_in
-          simp at h_tail_lt
-          exact Nat.lt_trans h_lt h_tail_lt
-      | Run b =>
-        simp [wf_behavior_history_spawns] at h_wf
-      | Complete b =>
-        simp [wf_behavior_history_spawns] at h_wf
-
 theorem wf_history_spawn_mem_inv {bid bid' es} :
     wf_behavior_history bid es →
     .Spawn bid' ∈ es →
-    bid < bid' :=
+    is_spawn (.Spawn bid') :=
   by
-    intro h_wf h_in
-    cases es with
-    | nil =>
-      simp at h_in
-    | cons e es' =>
-      cases e with
-      | Spawn b
-      | Complete b =>
-        simp [wf_behavior_history] at h_wf
-      | Run b =>
-        simp [wf_behavior_history] at h_wf
-        rcases h_wf with ⟨h_eq, init, tail, h_eq', h_spawns, h_tail⟩
-        subst h_eq
-        subst h_eq'
-        have h_mem : .Spawn bid' ∈ init ++ tail := by
-          simp at h_in
-          exact List.mem_append.mpr h_in
-        rcases List.mem_append.mp h_mem with h_in | h_in
-        · exact wf_history_spawns_lt_inv h_spawns h_in
-        · have contra := wf_history_tail_mem_inv h_tail _ h_in
-          simp at contra
+    intro _ _
+    simp
 
 theorem wf_history_complete_mem_inv {bid bid' es} :
     wf_behavior_history bid es →

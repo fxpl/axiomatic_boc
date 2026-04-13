@@ -530,6 +530,31 @@ lemma list_snoc_eq_inv {A} {l1 l2 : List A} {x1 x2 : A} :
   by
     simp
 
+-- If timestamps are strictly increasing for every adjacent pair in a list,
+-- then all elements are pairwise distinct.
+lemma pairwise_ne_of_pair_ordered {A} {t : A → Nat} {l : List A} :
+    (∀ e1 e2, [e1, e2] <:+: l → t e1 < t e2) →
+    List.Pairwise (· ≠ ·) l := by
+  intro h_ts
+  induction l with
+  | nil => simp
+  | cons x xs ih =>
+    rw [List.pairwise_cons]
+    refine ⟨?_, ih (fun e1 e2 h_inf => h_ts e1 e2 (by
+      rcases h_inf with ⟨i, tl, h_eq⟩; subst h_eq; exact ⟨x :: i, tl, rfl⟩))⟩
+    intro y h_mem
+    rcases List.mem_iff_append.mp h_mem with ⟨mid, tl, h_eq⟩
+    have h_path : ((fun e1 e2 => [e1, e2] <:+: (x :: xs))+) x y := by
+      rw [h_eq]
+      simpa [List.append_assoc] using
+        pair_infix_trans_clos_middle (x := x) (y := y) (mid := mid) (tail := tl)
+    have close_lt : ∀ {u v : A}, ((fun e1 e2 => [e1, e2] <:+: (x :: xs))+) u v → t u < t v := by
+      intro u v h
+      induction h with
+      | single h => exact h_ts _ _ h
+      | tail _ h ih_step => exact Nat.lt_trans ih_step (h_ts _ _ h)
+    exact fun h_eq => (Nat.ne_of_lt (close_lt h_path)) (congrArg t h_eq)
+
 def bad_example : Prop := 3 < 2
 -- ∃n∈N. 5 < n ∧ n<10
 def example2 := ∃n : ℕ, 5 < n ∧ n < 10
