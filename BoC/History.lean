@@ -182,8 +182,8 @@ def History.timestamp_wf (H : History) (t : Event → Nat) : Prop :=
   (∀c bid1 bid2,
     .Complete bid1 ∈ H.cowns c →
     .Run bid2 ∈ H.cowns c →
-    (t (.Spawn bid1) < t (.Spawn bid2) ↔
-     t (.Complete bid1) < t (.Run bid2)))
+    t (.Complete bid1) < t (.Run bid2) →
+    t (.Spawn bid1) < t (.Spawn bid2))
 
 @[simp]
 def History.wf (t : Event → Nat) (H : History) : Prop :=

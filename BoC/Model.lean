@@ -1038,8 +1038,8 @@ lemma model_from_history_run_lt_timestamp {H : History} {t : Event → Nat} :
         ∧ (∀c bid1 bid2,
             .Complete bid1 ∈ H.cowns c →
             .Run bid2 ∈ H.cowns c →
-            (t (.Spawn bid1) < t (.Spawn bid2) ↔
-             t (.Complete bid1) < t (.Run bid2)))
+            t (.Complete bid1) < t (.Run bid2) →
+            t (.Spawn bid1) < t (.Spawn bid2))
         := by
       simpa [History.timestamp_wf] using h_twf
 
@@ -1113,6 +1113,112 @@ lemma wf_cown_history_complete_has_run {cs bid} :
       | cons e' cs''' =>
         rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
         grind
+
+-- TODO: See if this can be simplified (started inside)
+lemma head_lt_of_mem_ordered {A} {ord : A → Nat} {x : A} {xs : List A} {y : A} :
+    y ∈ xs →
+    (∀e1 e2, [e1, e2] <:+: (x :: xs) → ord e1 < ord e2) →
+    ord x < ord y := by
+  intro h_mem h_ord
+  -- induction h_mem with
+  -- | head tail =>
+  --   apply h_ord
+  --   simp [List.IsInfix]
+  --   exists [], tail
+  -- | @tail z tail h_mem' ih =>
+  rcases List.mem_iff_append.mp h_mem with ⟨mid, tail, h_split⟩
+  have h_path : ((fun e1 e2 ↦ [e1, e2] <:+: (x :: xs))+) x y := by
+    rw [h_split]
+    simpa [List.append_assoc] using
+      (pair_infix_trans_clos_middle (x := x) (y := y) (mid := mid) (tail := tail))
+  have h_ord_path : ((fun e1 e2 ↦ ord e1 < ord e2)+) x y := by
+    exact rel_trans_clos_weaken (fun _ _ h_infix => h_ord _ _ h_infix) h_path
+  have close_lt :
+      ∀ {u v : A}, ((fun e1 e2 ↦ ord e1 < ord e2)+) u v → ord u < ord v := by
+    intro u v h_clos
+    induction h_clos with
+    | single h_step => exact h_step
+    | tail h_prev h_step ih => exact Nat.lt_trans ih h_step
+  exact close_lt h_ord_path
+
+-- If a Run event is in a well-formed cown history and is not "after" some other
+-- event in that same history (w.r.t. timestamps), then it cannot be the last
+-- element; therefore the matching Complete event must also be present.
+-- TODO: Go through and see if it can be simplified
+lemma wf_cown_history_run_has_complete_of_not_last_by_time
+    {cs : List Event} {t : Event → Nat} {bid : BId} {e : Event} :
+    wf_cown_history cs →
+    Event.Run bid ∈ cs →
+    e ∈ cs →
+    Event.Run bid ≠ e →
+    t (Event.Run bid) ≤ t e →
+    (∀ e1 e2, [e1, e2] <:+: cs → t e1 < t e2) →
+    Event.Complete bid ∈ cs := by
+  intro h_wfc h_run_mem h_e_mem h_ne h_le h_time
+  induction cs using wf_cown_history.induct generalizing bid e with
+  | case1 =>
+    simp at h_run_mem
+  | case2 bid0 =>
+    simp at h_run_mem
+    subst h_run_mem
+    simp at h_e_mem
+    subst h_e_mem
+    exact False.elim (h_ne rfl)
+  | case3 bid1 bid2 cs' ih =>
+    simp [wf_cown_history] at h_wfc
+    rcases h_wfc with ⟨h_bid_eq, h_wfc', _h_order_tail⟩
+    subst h_bid_eq
+    have h_run_cases : bid = bid1 ∨ Event.Run bid ∈ cs' := by
+      simpa using h_run_mem
+    cases h_run_cases with
+    | inl h_bid =>
+      subst h_bid
+      simp
+    | inr h_run_tail =>
+      have h_time_tail :
+          ∀e1 e2, [e1, e2] <:+: cs' → t e1 < t e2 := by
+        intro e1 e2 h_infix
+        apply h_time
+        rcases h_infix with ⟨init, tail, h_eq⟩
+        refine ⟨Event.Run bid1 :: Event.Complete bid1 :: init, tail, ?_⟩
+        simp [h_eq]
+      have h_e_cases : e = Event.Run bid1 ∨ e = Event.Complete bid1 ∨ e ∈ cs' := by
+        simpa using h_e_mem
+      cases h_e_cases with
+      | inl h_e_run1 =>
+        subst h_e_run1
+        have h_mem' : Event.Run bid ∈ Event.Complete bid1 :: cs' := by
+          simp [h_run_tail]
+        have h_lt_run : t (Event.Run bid1) < t (Event.Run bid) :=
+          head_lt_of_mem_ordered h_mem' h_time
+        exact False.elim (Nat.not_le_of_gt h_lt_run h_le)
+      | inr h_rest =>
+        cases h_rest with
+        | inl h_e_complete1 =>
+          subst h_e_complete1
+          have h_time_from_complete :
+              ∀e1 e2, [e1, e2] <:+: (Event.Complete bid1 :: cs') → t e1 < t e2 := by
+            intro e1 e2 h_infix
+            apply h_time
+            rcases h_infix with ⟨init, tail, h_eq⟩
+            refine ⟨Event.Run bid1 :: init, tail, ?_⟩
+            simp [h_eq]
+          have h_lt_complete_run : t (Event.Complete bid1) < t (Event.Run bid) :=
+            head_lt_of_mem_ordered h_run_tail h_time_from_complete
+          exact False.elim (Nat.not_le_of_gt h_lt_complete_run h_le)
+        | inr h_e_tail =>
+          have h_complete_tail : Event.Complete bid ∈ cs' :=
+            ih h_wfc' h_run_tail h_e_tail h_ne h_le h_time_tail
+          simp [h_complete_tail]
+  | case4 cs' h_empty h_single h_rc =>
+    rcases cs' with _ | ⟨e0, cs''⟩ <;> simp at h_empty
+    cases cs'' with
+    | nil =>
+      rcases e0 <;> simp [wf_cown_history] at h_wfc
+      grind
+    | cons e1 cs''' =>
+      rcases e0 <;> rcases e1 <;> simp [wf_cown_history] at h_wfc
+      grind
 
 -- TODO: Look at this proof and clean it up
 lemma list_order_lt_inv {A} {l : List A} {a b : A} {ord : A → ℕ} :
@@ -1201,8 +1307,8 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
       ∧ (∀c bid1 bid2,
         .Complete bid1 ∈ H.cowns c →
         .Run bid2 ∈ H.cowns c →
-        (t (.Spawn bid1) < t (.Spawn bid2) ↔
-         t (.Complete bid1) < t (.Run bid2)))
+        t (.Complete bid1) < t (.Run bid2) →
+        t (.Spawn bid1) < t (.Spawn bid2))
       := by
       simpa using h_twf
 
@@ -1260,8 +1366,122 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
     clear h_overlap
 
     -- This is where we use the timestamp ordering
+    -- TODO: This seems complicated
     have h_lt' : t (.Complete bid1) < t (.Run bid2) := by
-      exact (h_twf_spawn_order c bid1 bid2 h_mem1 h_mem2).mp h_lt
+      by_cases h_cr : t (.Complete bid1) < t (.Run bid2)
+      · exact h_cr
+      · exfalso
+        have h_mem1' : .Complete bid2 ∈ H.cowns c := by
+          have h_wfc : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+          have h_le : t (Event.Run bid2) ≤ t (Event.Complete bid1) := by
+            exact Nat.le_of_not_gt (by grind)
+          exact wf_cown_history_run_has_complete_of_not_last_by_time
+            (cs := H.cowns c) (t := t) (bid := bid2) (e := Event.Complete bid1)
+            h_wfc h_mem2 h_mem1 (by simp) h_le (h_twf_co c)
+        have h_mem2' : .Run bid1 ∈ H.cowns c := by
+          have ⟨init, tail, h_eq⟩ : ∃init tail, H.cowns c = init ++ .Complete bid1 :: tail := by
+            exact List.mem_iff_append.mp h_mem1
+          have h_wfc : wf_cown_history (init ++ .Complete bid1 :: tail) := by
+            simpa [h_eq] using (h_wf.2.2.1 c)
+          have ⟨init', h_eq'⟩ := wf_cown_history_complete_pred h_wfc
+          rw [h_eq, h_eq']
+          simp
+        have h_lt' : t (.Complete bid2) < t (.Run bid1) := by
+          have h_bid_ne : bid2 ≠ bid1 := by
+            intro h_eq
+            subst h_eq
+            exact Nat.lt_irrefl _ h_lt
+          have h_eq_pair1 :
+              ∃ init1 tail1,
+                H.cowns c = init1 ++ Event.Run bid1 :: Event.Complete bid1 :: tail1 := by
+            have ⟨init, tail, h_eq⟩ :
+                ∃ init tail, H.cowns c = init ++ Event.Complete bid1 :: tail := by
+              exact List.mem_iff_append.mp h_mem1
+            have h_wfc1 : wf_cown_history (init ++ Event.Complete bid1 :: tail) := by
+              simpa [h_eq] using (h_wf.2.2.1 c)
+            have ⟨init', h_init⟩ := wf_cown_history_complete_pred h_wfc1
+            exists init', tail
+            simp [h_eq, h_init, List.append_assoc]
+          have h_eq_pair2 :
+              ∃ init2 tail2,
+                H.cowns c = init2 ++ Event.Run bid2 :: Event.Complete bid2 :: tail2 := by
+            have ⟨init, tail, h_eq⟩ :
+                ∃ init tail, H.cowns c = init ++ Event.Complete bid2 :: tail := by
+              exact List.mem_iff_append.mp h_mem1'
+            have h_wfc2 : wf_cown_history (init ++ Event.Complete bid2 :: tail) := by
+              simpa [h_eq] using (h_wf.2.2.1 c)
+            have ⟨init', h_init⟩ := wf_cown_history_complete_pred h_wfc2
+            exists init', tail
+            simp [h_eq, h_init, List.append_assoc]
+          rcases h_eq_pair1 with ⟨init1, tail1, h_pair1⟩
+          rcases h_eq_pair2 with ⟨init2, tail2, h_pair2⟩
+          have h_order :=
+            list_annoying_inv
+              (a := Event.Run bid2) (b := Event.Complete bid2)
+              (c := Event.Run bid1) (d := Event.Complete bid1)
+              (l := H.cowns c) (init' := init2) (tail' := tail2)
+              (init := init1) (tail := tail1)
+              (by simp [h_bid_ne])
+              (by simp)
+              (by simp)
+              h_pair2
+              h_pair1
+          cases h_order with
+          | inl h_case =>
+            rcases h_case with ⟨init, mid, tail, h_eq_case⟩
+            have h_ord_full :
+                ∀e1 e2, [e1, e2] <:+: (init ++ Event.Run bid2 :: Event.Complete bid2 ::
+                  mid ++ Event.Run bid1 :: Event.Complete bid1 :: tail) → t e1 < t e2 := by
+              simpa [h_eq_case] using (h_twf_co c)
+            have h_ord_suffix :
+                ∀e1 e2, [e1, e2] <:+: (Event.Complete bid2 ::
+                  mid ++ Event.Run bid1 :: Event.Complete bid1 :: tail) → t e1 < t e2 := by
+              intros e1 e2 h_infix
+              apply h_ord_full
+              rw [List.append_assoc]
+              apply List.infix_append_of_infix_right
+              apply List.infix_cons
+              exact h_infix
+            have h_mem_run1 : Event.Run bid1 ∈
+                (mid ++ Event.Run bid1 :: Event.Complete bid1 :: tail) := by
+              simp
+            exact head_lt_of_mem_ordered
+              (ord := t)
+              (x := Event.Complete bid2)
+              (xs := mid ++ Event.Run bid1 :: Event.Complete bid1 :: tail)
+              (y := Event.Run bid1)
+              h_mem_run1
+              h_ord_suffix
+          | inr h_case =>
+            rcases h_case with ⟨init, mid, tail, h_eq_case⟩
+            have h_ord_full :
+                ∀e1 e2, [e1, e2] <:+: (init ++ Event.Run bid1 :: Event.Complete bid1 ::
+                  mid ++ Event.Run bid2 :: Event.Complete bid2 :: tail) → t e1 < t e2 := by
+              simpa [h_eq_case] using (h_twf_co c)
+            have h_ord_suffix :
+                ∀e1 e2, [e1, e2] <:+: (Event.Complete bid1 ::
+                  mid ++ Event.Run bid2 :: Event.Complete bid2 :: tail) → t e1 < t e2 := by
+              intros e1 e2 h_infix
+              apply h_ord_full
+              rw [List.append_assoc]
+              apply List.infix_append_of_infix_right
+              apply List.infix_cons
+              exact h_infix
+            have h_mem_run2 : Event.Run bid2 ∈
+                (mid ++ Event.Run bid2 :: Event.Complete bid2 :: tail) := by
+              simp
+            have h_contra : t (Event.Complete bid1) < t (Event.Run bid2) :=
+              head_lt_of_mem_ordered
+                (ord := t)
+                (x := Event.Complete bid1)
+                (xs := mid ++ Event.Run bid2 :: Event.Complete bid2 :: tail)
+                (y := Event.Run bid2)
+                h_mem_run2
+                h_ord_suffix
+            exact False.elim (h_cr h_contra)
+        have h_lt_rev : t (.Spawn bid2) < t (.Spawn bid1) :=
+          h_twf_spawn_order c bid2 bid1 h_mem1' h_mem2' h_lt'
+        exact Nat.lt_asymm h_lt h_lt_rev
 
     have h_wf_c : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
     have ⟨init, mid, tail, h_c_eq⟩ : ∃init mid tail,

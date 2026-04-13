@@ -272,7 +272,7 @@ lemma step_cfg_preserves_history_wf_complete
   exact wf_history_complete_fresh h_wf h_run_mem h_running_bid.2 h_run_on_cown
 -/
 
-lemma wf_history_spawn_fresh {t} H {bid fresh : BId} :
+lemma wf_history_spawn_fresh {H : History} {t : Event → Nat} {bid fresh : BId} :
     (t ⊢ H) →
     Event.Run bid ∈ H.behaviors bid →
     History.fresh fresh H →
@@ -359,7 +359,7 @@ theorem step_cfg_preserves_history_wf {cfg cfg' H H'} {t : Event → Nat} :
         · sorry
         · sorry
         · sorry
-        · intro c bid1' bid2' h_mem1 h_mem2
+        · intro c bid1' bid2' h_mem1 h_mem2 h_lt
           sorry
           -- For the -> direction, spawn ID is fresh so we can rely on previous timestamp
           -- For the <- direction, we know that bid1 has no run or completion event
