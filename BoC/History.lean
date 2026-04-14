@@ -196,7 +196,7 @@ def History.wf (t : Event → Nat) (H : History) : Prop :=
   -- There exists a global timestamping that is monotone on history edges.
   History.timestamp_wf H t
   ∧
-  (∃top, ∀e ∈ History.events H, t e ≤ top)
+  (∃top, ∀e ∈ History.events H, t e < top)
 
 notation t "⊢" H => History.wf t H
 
@@ -618,3 +618,27 @@ lemma wf_history_event_unique {t} {H bid1 bid2 e} :
       have h1 : bid1 = bid := wf_history_complete_mem_inv (h_behaviors bid1) h_mem1
       have h2 : bid2 = bid := wf_history_complete_mem_inv (h_behaviors bid2) h_mem2
       grind
+
+lemma wf_cown_history_complete_has_run {cs bid} :
+    wf_cown_history cs →
+    Event.Complete bid ∈ cs →
+    Event.Run bid ∈ cs :=
+  by
+    introv h_wfc h_complete_mem
+    induction cs using wf_cown_history.induct with
+    | case1 => simp at h_complete_mem
+    | case2 _ => simp at h_complete_mem
+    | case3 bid1 bid2 cs' ih =>
+      simp [wf_cown_history] at h_wfc
+      rcases h_wfc with ⟨h_bid_eq, h_wfc'⟩
+      subst h_bid_eq
+      grind
+    | case4 cs' h_nil h_run ih =>
+      rcases cs' with _ | ⟨e, cs''⟩ <;> simp at h_complete_mem
+      cases cs'' with
+      | nil =>
+        rcases e <;> simp [wf_cown_history] at h_wfc
+        grind
+      | cons e' cs''' =>
+        rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
+        grind

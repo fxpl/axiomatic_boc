@@ -15,11 +15,6 @@ notation "when" cowns "{{" "}}" => Stmt.seq cowns Stmt.done Stmt.done
 #check when [c1, c2] {{ when [c3] {{ }} }};
        when [] {{ }}
 
--- TODO: Add version that creates and manages scopes for cowns
--- cowns ⊆ σ
--- ---------------------------------------------------------------------
--- c' ⊢ (Cown c = when cowns { body } ; cont, σ) --> (cont[c ↦ c'], σ ∪ {c'}) | (body, cowns, σ)
-
 set_option quotPrecheck false in
 set_option hygiene false in
 notation s "~>" s' "|" b => StepBehavior s (s', b)
@@ -134,7 +129,7 @@ theorem step_cfg_progress {cfg H} :
             apply StepCfg.Spawn
             apply StepBehavior.When
 
-def HistoryMatchesCfg (H : History) : Cfg → Prop
+def HistoryMatchesCfg (H : History) (t : Event → Nat) : Cfg → Prop
 | ⟨fresh, running, pending⟩ =>
   -- All running behaviors have started but not completed
   (∀b, b ∈ running ↔ (Event.Run b.bid ∈ H.behaviors b.bid ∧
@@ -164,257 +159,298 @@ def HistoryMatchesCfg (H : History) : Cfg → Prop
     Event.fresh fresh e) ∧
   (∀c e,
     e ∈ H.cowns c →
-    Event.fresh fresh e)
+    Event.fresh fresh e) ∧
+  -- The timestamps of spawns increase in the pending queue
+  (List.Pairwise (fun e1 e2 => t e1 < t e2) (pending.map (fun b => Event.Spawn b.bid))) ∧
+  -- Everything that has run with a cown spawned before anything pending with that cown
+  (∀bid1 b2 c,
+    .Run bid1 ∈ H.cowns c →
+    b2 ∈ pending →
+    c ∈ b2.cowns →
+    t (Event.Spawn bid1) < t (Event.Spawn b2.bid))
 
-notation H " ⊢ " cfg => HistoryMatchesCfg H cfg
+---------------------------
 
--- Timestamp-indexed variant used to keep the same timestamp witness explicit
--- across configuration/history preservation proofs.
-def HistoryMatchesCfgT (H : History) (t : Event → Nat) : Cfg → Prop
-| cfg =>
-  HistoryMatchesCfg H cfg ∧ History.timestamp_wf H t
-
--- Pending queue is sorted by increasing spawn timestamp.
-def PendingSpawnSortedByTime (t : Event → Nat) (pending : List Behavior) : Prop :=
-  List.Pairwise (fun b1 b2 => t (.Spawn b1.bid) < t (.Spawn b2.bid)) pending
-
--- Stronger timestamp-indexed matching relation that also tracks queue order.
-def HistoryMatchesCfgTSorted (H : History) (t : Event → Nat) : Cfg → Prop
-| ⟨fresh, running, pending⟩ =>
-  HistoryMatchesCfgT H t ⟨fresh, running, pending⟩ ∧ PendingSpawnSortedByTime t pending
-
-lemma history_matches_sorted_to_matches
-    {H : History} {t : Event → Nat} {cfg : Cfg} :
-    HistoryMatchesCfgTSorted H t cfg → HistoryMatchesCfg H cfg := by
-  intro h
-  rcases h with ⟨h_mt, _⟩
-  exact h_mt.1
-
-lemma history_matches_sorted_to_timestamp
-    {H : History} {t : Event → Nat} {cfg : Cfg} :
-    HistoryMatchesCfgTSorted H t cfg → History.timestamp_wf H t := by
-  intro h
-  rcases h with ⟨h_mt, _⟩
-  exact h_mt.2
+lemma history_wf_timestamp_wf
+    {H : History} {t : Event → Nat} :
+    (t ⊢ H) →
+    History.timestamp_wf H t :=
+  by
+    grind [History.wf]
 
 lemma history_wf_has_top
     {H : History} {t : Event → Nat} :
-    (t ⊢ H) → ∃ top, ∀e ∈ History.events H, t e ≤ top := by
-  intro h_wf
-  exact h_wf.2.2.2.2.2.2
-
-/-
-lemma step_cfg_preserves_history_wf_spawn
-    {fresh bid1 : BId} {bs1 bs2 : List Behavior}
-    {cowns cowns' : List Cown} {s s' s'' : Stmt}
-    {pending : List Behavior} {H : History} {t : Event → Nat} :
-    (s ~> s' | (cowns', s'')) →
-    HistoryMatchesCfgTSorted H t ⟨fresh, bs1 ++ ⟨bid1, cowns, s⟩ :: bs2, pending⟩ →
     (t ⊢ H) →
-    ∃ t', t' ⊢ (H[bid1 += Event.Spawn fresh]) := by
-  intro _h_step h_matches h_wf
-  have h_model : HistoryMatchesCfg H ⟨fresh, bs1 ++ ⟨bid1, cowns, s⟩ :: bs2, pending⟩ :=
-    history_matches_sorted_to_matches h_matches
-  rcases h_model with
-    ⟨h_running, _h_pending_not_running, _h_pending_spawned, _h_spawned,
-     _h_completed, _h_cowns, h_events_behaviors, h_events_cowns⟩
-  have h_run_mem : Event.Run bid1 ∈ H.behaviors bid1 := by
-    have h_in_running :
-        (⟨bid1, cowns, s⟩ : Behavior) ∈ (bs1 ++ ⟨bid1, cowns, s⟩ :: bs2) := by
-      simp
-    have h_running_bid := (h_running ⟨bid1, cowns, s⟩).1 h_in_running
-    exact h_running_bid.1
-  have h_fresh : History.fresh fresh H := by
-    constructor
-    · intro bid e h_mem
-      exact h_events_behaviors bid e h_mem
-    · intro c e h_mem
-      exact h_events_cowns c e h_mem
-  exact wf_history_spawn_fresh (H := H) (t := t) (bid := bid1) (fresh := fresh)
-    h_wf h_run_mem h_fresh
+    ∃top, ∀e ∈ History.events H, t e < top :=
+  by
+    intro h_wf
+    exact h_wf.2.2.2.2.2.2
 
-lemma step_cfg_preserves_history_wf_complete
-    {fresh bid : BId} {bs1 bs2 : List Behavior}
-    {cowns : List Cown} {pending : List Behavior}
-    {H : History} {t : Event → Nat} :
-    HistoryMatchesCfgTSorted H t ⟨fresh, bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2, pending⟩ →
-    (t ⊢ H) →
-    ∃ t', t' ⊢ (H[bid += Event.Complete bid][cowns += Event.Complete bid]) := by
-  intro h_matches h_wf
-  have h_model : HistoryMatchesCfg H ⟨fresh, bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2, pending⟩ :=
-    history_matches_sorted_to_matches h_matches
-  have h_twf : History.timestamp_wf H t :=
-    history_matches_sorted_to_timestamp h_matches
-  rcases h_model with
-    ⟨h_running, _h_pending_not_running, _h_pending_spawned, _h_spawned,
-     _h_completed, h_cowns_rel, _h_events_behaviors, _h_events_cowns⟩
-  have h_in_running :
-      (⟨bid, cowns, Stmt.done⟩ : Behavior) ∈ (bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2) := by
-    simp
-  have h_running_bid := (h_running ⟨bid, cowns, Stmt.done⟩).1 h_in_running
-  have h_run_mem : Event.Run bid ∈ H.behaviors bid := h_running_bid.1
-  have h_run_on_cown : ∀ c, c ∈ cowns → Event.Run bid ∈ H.cowns c := by
-    intro c h_mem
-    have h_rel := (h_cowns_rel ⟨bid, cowns, Stmt.done⟩ c).1
-    have h_pair :
-      (⟨bid, cowns, Stmt.done⟩ : Behavior) ∈ (bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2)
-      ∧ c ∈ cowns :=
-      ⟨h_in_running, h_mem⟩
-    exact (h_rel h_pair).1
-  have ⟨top, h_top⟩ := history_wf_has_top h_wf
-  let t' : Event → Nat := fun e => if e = .Complete bid then top + 1 else t e
-  have h_t'_run_lt_complete : t' (.Run bid) < t' (.Complete bid) := by
-    have h_run_le : t (.Run bid) ≤ top := by
-      apply h_top
-      · exact ⟨bid, h_run_mem⟩
-    have h_lt_succ : t (.Run bid) < top + 1 := Nat.lt_succ_of_le h_run_le
-    simp [t', h_lt_succ]
-  exact wf_history_complete_fresh h_wf h_run_mem h_running_bid.2 h_run_on_cown
--/
+lemma history_matches_cfg_fresh_behavior_history
+    {H : History} {t : Event → Nat} {cfg bid e} :
+    HistoryMatchesCfg H t cfg →
+    e ∈ H.behaviors bid →
+    Event.fresh cfg.fresh e :=
+  by
+    intro h_matches h_in
+    exact h_matches.2.2.2.2.2.2.1 bid e h_in
 
-lemma wf_history_spawn_fresh {H : History} {t : Event → Nat} {bid fresh : BId} :
+lemma history_matches_cfg_fresh_cown_history
+    {H : History} {t : Event → Nat} {cfg c e} :
+    HistoryMatchesCfg H t cfg →
+    e ∈ H.cowns c →
+    Event.fresh cfg.fresh e :=
+  by
+    intro h_matches h_in
+    exact h_matches.2.2.2.2.2.2.2.1 c e h_in
+
+lemma history_matches_cfg_pending_order {H t cfg bid1 b2 c} :
+    HistoryMatchesCfg H t cfg →
+    .Run bid1 ∈ H.cowns c →
+    b2 ∈ cfg.pending →
+    c ∈ b2.cowns →
+    t (Event.Spawn bid1) < t (Event.Spawn b2.bid) :=
+  by
+    intro h_matches h_mem1 h_mem2 h_mem3
+    exact h_matches.2.2.2.2.2.2.2.2.2 bid1 b2 c h_mem1 h_mem2 h_mem3
+
+@[simp]
+lemma history_wf_hb_order {H : History} {t : Event → Nat} {bid1 bid2 c} :
     (t ⊢ H) →
-    Event.Run bid ∈ H.behaviors bid →
-    History.fresh fresh H →
-    ∃t', t' ⊢ (H[bid += Event.Spawn fresh]) :=
+    .Complete bid1 ∈ H.cowns c →
+    .Run bid2 ∈ H.cowns c →
+    t (.Complete bid1) < t (.Run bid2) →
+    t (.Spawn bid1) < t (.Spawn bid2) :=
+  by
+    intro h_wf h_mem1 h_mem2 h_lt
+    have h_wft := history_wf_timestamp_wf h_wf
+    grind [History.timestamp_wf]
+
+lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
+  (t ⊢ H) →
+  (∀e, e ∈ H.events → t e < top) →
+  HistoryMatchesCfg H t
+    { fresh,
+      running := bs1 ++ {bid, cowns := cs, stmt := s} :: bs2,
+      pending } →
+  let t' := fun e => if e = Event.Spawn fresh then top else t e;
+  (t' ⊢ H[bid+=Event.Spawn fresh]) :=
+  by
+    introv h_wf h_top h_matches t'
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · refine ⟨?_, ?_, ?_, ?_⟩
+      · sorry
+      · sorry
+      · sorry
+      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+        have h_wft := history_wf_timestamp_wf h_wf
+        simp [t'] at h_lt ⊢
+        have h_neq1 : bid1 ≠ fresh := by
+          intros contra
+          subst contra
+          simp at h_mem1
+          have h_fresh := history_matches_cfg_fresh_cown_history h_matches h_mem1
+          simp [Event.fresh] at h_fresh
+        have h_neq2 : bid2 ≠ fresh := by
+          intros contra
+          subst contra
+          simp at h_mem2
+          have h_fresh := history_matches_cfg_fresh_cown_history h_matches h_mem2
+          simp [Event.fresh] at h_fresh
+        split <;> try contradiction
+        exact h_wft.2.2.2 c bid1 bid2 h_mem1 h_mem2 h_lt
+    · sorry
+
+lemma history_matches_preservation_spawn
+    {t H s top fresh bid bs1 bs2 cs cs' s' s'' pending} :
+    (t ⊢ H) →
+    (∀e, e ∈ H.events → t e < top) →
+    HistoryMatchesCfg H t
+      { fresh,
+        running := bs1 ++ { bid := bid, cowns := cs, stmt := s } :: bs2,
+        pending } →
+    let t' := fun e => if e = Event.Spawn fresh then top else t e;
+    HistoryMatchesCfg (H[bid += Event.Spawn fresh]) t'
+      { fresh := fresh + 1,
+        running := bs1 ++ {bid, cowns := cs, stmt := s'} :: bs2,
+        pending := pending ++ [{bid := fresh, cowns := cs', stmt := s''}] } :=
   by
     sorry
 
--- Completing a running behavior preserves History.wf.
--- The new Complete event needs a fresh timestamp: t' e = if e = Complete bid then top+1 else t e.
-lemma wf_history_complete_fresh {H : History} {t : Event → Nat}
-    {bid : BId} {cowns : List Cown} :
+lemma wf_history_preservation_complete
+    {t H top bid1 bs1 bs2 bid cs pending} :
     (t ⊢ H) →
-    Event.Run bid ∈ H.behaviors bid →
-    Event.Complete bid ∉ H.behaviors bid →
-    (∀c, c ∈ cowns → Event.Run bid ∈ H.cowns c) →
-    ∃t', t' ⊢ (H[bid += Event.Complete bid][cowns += Event.Complete bid]) := by
-  sorry
+    (∀e, e ∈ H.events → t e < top) →
+    HistoryMatchesCfg H t
+      { fresh := bid1,
+        running := bs1 ++ { bid := bid, cowns := cs, stmt := Stmt.done } :: bs2,
+        pending } →
+    let t' := fun e => if e = Event.Complete bid then top else t e;
+    (t' ⊢ H[bid += Event.Complete bid][cs += Event.Complete bid]) :=
+  by
+    introv h_wf h_top h_matches t'
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · refine ⟨?_, ?_, ?_, ?_⟩
+      · sorry
+      · sorry
+      · sorry
+      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+        have h_wft := history_wf_timestamp_wf h_wf
+        simp [t'] at h_lt ⊢
+        split at h_lt
+        · have h_mem2' : .Run bid2 ∈ H.cowns c := by
+            simp at h_mem2
+            split at h_mem2 <;> grind
+          have ⟨bid2', h_mem2''⟩ := h_wf.2.2.2.1 c (.Run bid2) h_mem2'
+          have h_wfb : wf_behavior_history bid2' (H.behaviors bid2') := h_wf.1 bid2'
+          have h_eq2 : bid2' = bid2 := by
+            exact wf_history_run_mem_inv h_wfb h_mem2''
+          subst h_eq2
+          have h_mem2''' : .Run bid2' ∈ H.events := by
+            simp [History.events]
+            exists bid2'
+          have h_lt' := h_top (.Run bid2') h_mem2'''
+          grind
+        · have h_mem1' : .Complete bid1 ∈ H.cowns c := by
+            simp at h_mem1
+            split at h_mem1 <;> grind
+          have h_mem2' : .Run bid2 ∈ H.cowns c := by
+            simp at h_mem2
+            split at h_mem2 <;> grind
+          exact h_wft.2.2.2 c bid1 bid2 h_mem1' h_mem2' h_lt
+    · sorry
 
--- Running a pending behavior preserves History.wf.
--- The new Run event needs a fresh timestamp: t' e = if e = Run bid then top+1 else t e.
--- h_cowns_free: every cown in the list is unoccupied (every Run in its history has a Complete).
-lemma wf_history_run_fresh {H : History} {t : Event → Nat}
-    {bid : BId} {cowns : List Cown} :
+lemma history_matches_preservation_complete
+    {t H top bid1 bs1 bs2 bid cs pending} :
     (t ⊢ H) →
-    Event.Run bid ∉ H.behaviors bid →
-    (∃ parent, Event.Spawn bid ∈ H.behaviors parent) →
-    (∀ c, c ∈ cowns → ∀ bid', Event.Run bid' ∈ H.cowns c → Event.Complete bid' ∈ H.cowns c) →
-    ∃t', t' ⊢ (H[bid += Event.Run bid][cowns += Event.Run bid]) := by
-  sorry
+    (∀e, e ∈ H.events → t e < top) →
+    HistoryMatchesCfg H t
+      { fresh := bid1,
+        running := bs1 ++ { bid := bid, cowns := cs, stmt := Stmt.done } :: bs2,
+        pending } →
+    let t' := fun e => if e = Event.Complete bid then top else t e;
+    HistoryMatchesCfg (H[bid += Event.Complete bid][cs += Event.Complete bid]) t'
+      { fresh := bid1,
+        running := bs1 ++ bs2,
+        pending } :=
+  by
+    sorry
 
-lemma step_cfg_preserves_history_wf_run
-    {fresh : BId} {running bs1 bs2 : List Behavior} {b : Behavior}
-    {H : History} {t : Event → Nat} :
-    (∀c, c ∈ b.cowns → c ∉ running.flatMap Behavior.cowns) →
-    (∀c, c ∈ b.cowns → c ∉ bs1.flatMap Behavior.cowns) →
-    HistoryMatchesCfgTSorted H t ⟨fresh, running, bs1 ++ b :: bs2⟩ →
+lemma wf_history_preservation_run
+  {t H top bid1 bs1 bs2 running b} :
     (t ⊢ H) →
-    ∃ t', t' ⊢ (H[b.bid += Event.Run b.bid][b.cowns += Event.Run b.bid]) := by
-  intro _h_no_running _h_no_pending h_matches h_wf
-  have h_model : HistoryMatchesCfg H ⟨fresh, running, bs1 ++ b :: bs2⟩ :=
-    history_matches_sorted_to_matches h_matches
-  rcases h_model with
-    ⟨_h_running_rel, h_pending_not_running, h_pending_spawned, _h_spawned,
-     _h_completed, h_cowns_rel, _h_events_behaviors, _h_events_cowns⟩
-  have h_b_in_pending : b ∈ bs1 ++ b :: bs2 := by simp
-  have h_run_not_mem : Event.Run b.bid ∉ H.behaviors b.bid :=
-    h_pending_not_running b h_b_in_pending
-  have h_spawn_mem : ∃ parent, Event.Spawn b.bid ∈ H.behaviors parent :=
-    h_pending_spawned b h_b_in_pending
-  -- For each c ∈ b.cowns, every Run in H.cowns c already has a matching Complete
-  -- (i.e., the cown is unoccupied). Proved by instantiating h_cowns_rel with a fresh
-  -- behavior ⟨bid', [], Stmt.done⟩: since c ∈ [] is False, the backward direction of
-  -- the iff forces a contradiction whenever Run bid' ∈ H.cowns c ∧ Complete bid' ∉ H.cowns c.
-  have h_cowns_free :
-      ∀ c, c ∈ b.cowns → ∀ bid', Event.Run bid' ∈ H.cowns c → Event.Complete bid' ∈ H.cowns c := by
-    intro c _h_c_in bid' h_run_in
-    by_cases (Event.Complete bid' ∈ H.cowns c)
-    · assumption
-    · have h_back :=
-        (h_cowns_rel (⟨bid', [], Stmt.done⟩ : Behavior) c).2 ⟨h_run_in, (by assumption)⟩
-      simp at h_back
-  exact wf_history_run_fresh h_wf h_run_not_mem h_spawn_mem h_cowns_free
+    (∀e, e ∈ H.events → t e < top) →
+    HistoryMatchesCfg H t
+      { fresh := bid1,
+        running,
+        pending := bs1 ++ b :: bs2 } →
+    let t' := fun e => if e = Event.Run b.bid then top else t e;
+    (t' ⊢ H[b.bid += Event.Run b.bid][b.cowns += Event.Run b.bid]) :=
+  by
+    introv h_wf h_top h_matches t'
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · sorry
+    · refine ⟨?_, ?_, ?_, ?_⟩
+      · sorry
+      · sorry
+      · sorry
+      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+        have h_wft := history_wf_timestamp_wf h_wf
+        simp [t'] at h_lt ⊢
+        split at h_lt
+        · next h_eq =>
+          subst h_eq
+          have h_wfc : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+          have h_mem1' : .Complete bid1 ∈ H.cowns c := by
+            simp at h_mem1
+            split at h_mem1 <;> grind
+          have h_mem1'' : .Run bid1 ∈ H.cowns c := by
+            exact wf_cown_history_complete_has_run h_wfc h_mem1'
+          simp at h_mem2
+          split at h_mem2
+          · next h_cmem =>
+            have h_pending : b ∈ bs1 ++ b :: bs2 := by simp
+            exact history_matches_cfg_pending_order h_matches h_mem1'' h_pending h_cmem
+          · have ⟨bid', h_mem2'⟩ := h_wf.2.2.2.1 c (.Run b.bid) h_mem2
+            have h_wfb : wf_behavior_history bid' (H.behaviors bid') := h_wf.1 bid'
+            have h_eq2 : bid' = b.bid := by
+              exact wf_history_run_mem_inv h_wfb h_mem2'
+            subst h_eq2
+            have h_pending : b ∈ bs1 ++ b :: bs2 := by simp
+            have h_nmem := h_matches.2.1 b h_pending
+            contradiction
+        · have h_mem1' : .Complete bid1 ∈ H.cowns c := by
+            simp at h_mem1
+            split at h_mem1 <;> grind
+          have h_mem2' : .Run bid2 ∈ H.cowns c := by
+            simp at h_mem2
+            split at h_mem2 <;> grind
+          exact h_wft.2.2.2 c bid1 bid2 h_mem1' h_mem2' h_lt
+    · sorry
 
-theorem step_cfg_preserves_history_wf {cfg cfg' H H'} {t : Event → Nat} :
+lemma history_matches_preservation_run
+  {t H top bid1 bs1 bs2 running b} :
+    (t ⊢ H) →
+    (∀e, e ∈ H.events → t e < top) →
+    HistoryMatchesCfg H t
+      { fresh := bid1,
+        running,
+        pending := bs1 ++ b :: bs2 } →
+    let t' := fun e => if e = Event.Run b.bid then top else t e;
+    HistoryMatchesCfg (H[b.bid += Event.Run b.bid][b.cowns += Event.Run b.bid]) t'
+      { fresh := bid1,
+        running := b :: running,
+        pending := bs1 ++ bs2 } :=
+  by
+    sorry
+
+theorem wf_preservation {cfg cfg' H H'} {t : Event → Nat} :
     ((cfg, H) ⇒ (cfg', H')) →
-    HistoryMatchesCfgTSorted H t cfg →
+    HistoryMatchesCfg H t cfg →
     (t ⊢ H) →
-    ∃t', t' ⊢ H' :=
+    ∃t', (t' ⊢ H') ∧ HistoryMatchesCfg H' t' cfg' :=
   by
     intro h_step h_matches h_wf
     have ⟨top, h_top⟩ := history_wf_has_top h_wf
     cases h_step with
-    | @Spawn bid1 bid2 bs1 bs2 cs cs' s s' s'' pending h_step =>
-      let t' := fun e => if e = .Spawn bid1 then top else t e
+    | @Spawn fresh bid bs1 bs2 cs cs' s s' s'' pending h_step =>
+      let t' := fun e => if e = .Spawn fresh then top else t e
       exists t'
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · -- TODO: Extract to a lemma
-        refine ⟨?_, ?_, ?_, ?_⟩
-        · sorry
-        · sorry
-        · sorry
-        · intro c bid1' bid2' h_mem1 h_mem2 h_lt
-          sorry
-          -- For the -> direction, spawn ID is fresh so we can rely on previous timestamp
-          -- For the <- direction, we know that bid1 has no run or completion event
-      · exists (top + 1)
-        simp [History.events]
-        introv h_mem
-        sorry
-    | @Complete bid1 bs1 bs2 bid cs pending h_step =>
+      refine ⟨?_, ?_⟩
+      · exact wf_history_preservation_spawn h_wf h_top h_matches
+      · exact history_matches_preservation_spawn h_wf h_top h_matches
+
+      -- For the -> direction, spawn ID is fresh so we can rely on previous timestamp
+      -- For the <- direction, we know that bid1 has no run or completion event
+    | @Complete bid1 bs1 bs2 bid cs pending =>
       let t' := fun e => if e = .Complete bid then top else t e
       exists t'
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · -- TODO: Extract to a lemma
-        refine ⟨?_, ?_, ?_, ?_⟩
-        · sorry
-        · sorry
-        · sorry
-        · introv h_mem1 h_mem2
-          -- For the <- direction, the new Complete event has the largest timestamp, so inequality should hold vacuously
-          sorry
-      · exists (top + 1)
-        simp [History.events]
-        introv h_mem
-        sorry
-    | @Run bid1 bid2 bs1 bs2 b h_no_running h_no_pending =>
+      refine ⟨?_, ?_⟩
+      · exact wf_history_preservation_complete h_wf h_top h_matches
+      · exact history_matches_preservation_complete h_wf h_top h_matches
+      -- For the <- direction, the new Complete event has the largest timestamp, so inequality should hold vacuously
+    | @Run bid1 running bs1 bs2 b h_no_running h_no_pending =>
       let t' := fun e => if e = .Run b.bid then top else t e
       exists t'
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · sorry
-      · -- TODO: Extract to a lemma
-        refine ⟨?_, ?_, ?_, ?_⟩
-        · sorry
-        · sorry
-        · sorry
-        · introv h_mem1 h_mem2
-          -- For the -> direction, the new Run event has the largest timestamp, so inequality should hold trivially
-          -- For the <- direction, the new behaviour must have a spawn event happening later than any completed event
-          -- Two invariants on configurations:
-          --   1) the pending queue is sorted by increasing spawn timestamp
-          --   2) for a given cown c, the spawn event of a pending behaviour that
-          --      requires c must happen later than the spawn event of any
-          --      started behaviour that requires c
-          sorry
-      · exists (top + 1)
-        simp [History.events]
-        introv h_mem
-        sorry
+      refine ⟨?_, ?_⟩
+      · exact wf_history_preservation_run h_wf h_top h_matches
+      · exact history_matches_preservation_run h_wf h_top h_matches
+      -- For the -> direction, the new Run event has the largest timestamp, so inequality should hold trivially
+      -- For the <- direction, the new behaviour must have a spawn event happening later than any completed event
 
 /-
     -- 1) Pick a post-step timestamp witness.
@@ -450,22 +486,11 @@ theorem step_cfg_preserves_history_wf {cfg cfg' H H'} {t : Event → Nat} :
     exact ⟨t', ⟨h_field1, h_field2, h_field3, h_field4, h_field5, h_field6, h_field7⟩⟩
 -/
 
-theorem step_cfg_preserves_matching_history {cfg cfg' H H'} {t : Event → Nat} :
-    HistoryMatchesCfg H cfg →
-    ((cfg, H) ⇒ (cfg', H')) →
-    (t ⊢ H) →
-    HistoryMatchesCfg H' cfg' :=
-  by
-    intro h_model h_step h_wf
-    rcases cfg with ⟨fresh, running, pending⟩
-    rcases cfg' with ⟨fresh', running', pending'⟩
-    sorry
-
 -----------------------------
 
 theorem cfg_done_history_complete {cfg H} {t : Event → Nat} :
     cfg_done cfg →
-    HistoryMatchesCfg H cfg →
+    HistoryMatchesCfg H t cfg →
     History.wf t H →
     History.complete H :=
   by
