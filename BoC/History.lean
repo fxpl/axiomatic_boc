@@ -593,8 +593,7 @@ lemma wf_history_event_unique {t} {H bid1 bid2 e} :
     e ∈ H.behaviors bid2 →
     bid1 = bid2 :=
   by
-    intro h_wf
-    intro h_mem1 h_mem2
+    intro h_wf h_mem1 h_mem2
     cases e with
     | Spawn bid =>
       by_cases h_eq : bid1 = bid2
