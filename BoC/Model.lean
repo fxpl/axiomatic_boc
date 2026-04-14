@@ -386,8 +386,8 @@ lemma model_from_history_trans_po_run_to_complete {H : History} {bid : BId} :
     ((model_from_history H).po+) (.Run bid) (.Complete bid) :=
   by
     intro h_wf h_complete_mem
-    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.1 bid
-    have h_twf := h_wf.2.2.2.2.2.1
+    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.behaviorWf bid
+    have h_twf := h_wf.timestampWf
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
       exact wf_behavior_history_no_dup h_bwf (h_twf.1 bid)
     apply po_trans_pick_bid (bid := bid)
@@ -418,8 +418,8 @@ lemma model_from_history_po_run_to_complete {H : History} {bid : BId} :
     ((model_from_history H).po*) (.Run bid) (.Complete bid) :=
   by
     intro h_wf h_complete_mem
-    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.1 bid
-    have h_twf := h_wf.2.2.2.2.2.1
+    have h_bwf : wf_behavior_history bid (H.behaviors bid) := h_wf.behaviorWf bid
+    have h_twf := h_wf.timestampWf
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
       exact wf_behavior_history_no_dup h_bwf (h_twf.1 bid)
     apply po_pick_bid (bid := bid)
@@ -536,7 +536,7 @@ lemma model_from_history_complete_event_mem {H : History} {bid : BId} :
     intro h_wf h_in
     rcases h_in with ⟨owner, h_mem⟩
     have h_owner : owner = bid :=
-      wf_history_complete_mem_inv (h_wf.1 owner) h_mem
+      wf_history_complete_mem_inv (h_wf.behaviorWf owner) h_mem
     simpa [h_owner] using h_mem
 
 lemma complete_behavior_event_on_cown {H : History} {c : Cown} {bid : BId} :
@@ -546,7 +546,7 @@ lemma complete_behavior_event_on_cown {H : History} {c : Cown} {bid : BId} :
     .Complete bid ∈ H.cowns c :=
   by
     intro h_wf h_run_mem h_complete_mem
-    exact h_wf.2.2.2.2.1 c bid h_run_mem h_complete_mem
+    exact h_wf.completeOnCown c bid h_run_mem h_complete_mem
 
 -- TODO: Move to Common.lean
 lemma list_index_lt_inv {A} {x y : A} {l : List A} {i j : Nat} :
@@ -807,7 +807,7 @@ lemma wf_cown_history_connected_middle {H : History} {c : Cown} {bid1 bid2 : BId
           right
           exact h_mem
         simpa [List.append_assoc] using h_suffix
-      exact h_wf.2.2.2.1 c e h_mem_cown
+      exact h_wf.cownEvent c e h_mem_cown
     have h_clos := wf_cown_history_connected h_wf h_corr' h_wf_c'
     apply rel_clos_weaken ?_ h_clos
     · intros x y h_clos
@@ -937,7 +937,7 @@ lemma wf_cown_history_connected_middle_cr {H : History} {c : Cown} {bid1 bid2 : 
           right
           exact h_mem
         simpa [List.append_assoc] using h_suffix
-      exact h_wf.2.2.2.1 c e h_mem_cown
+      exact h_wf.cownEvent c e h_mem_cown
     have h_clos := wf_cown_history_connected_cr h_wf h_corr' h_wf_c'
     apply rel_trans_clos_weaken ?_ h_clos
     · intros x y h_clos
@@ -970,7 +970,7 @@ lemma model_from_history_single_causal_path {H : History} :
     rcases h_21 with ⟨bid1, h_eq1, bid2, h_eq2, init, tail, h_mid⟩
     rcases h_34 with ⟨bid3, h_eq3, bid4, h_eq4, init', tail', h_mid'⟩
     subst h_eq1 h_eq2 h_eq3 h_eq4
-    have h_wf_c : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+    have h_wf_c : wf_cown_history (H.cowns c) := h_wf.cownWf c
     cases (list_annoying_inv (by grind) (by grind) (by grind) h_mid h_mid') with
     | inl h_ex =>
       left
@@ -1054,7 +1054,7 @@ lemma model_from_history_run_lt_timestamp {H : History} {t : Event → Nat} :
     rcases h_spawn_in with ⟨parent, h_spawn_mem⟩
     rcases h_run_in with ⟨owner, h_run_mem⟩
     have h_owner : owner = bid := by
-      exact wf_history_run_mem_inv (h_wf.1 owner) h_run_mem
+      exact wf_history_run_mem_inv (h_wf.behaviorWf owner) h_run_mem
     have h_lt_owner : t (Event.Spawn owner) < t (Event.Run owner) :=
       h_twf_spawn_run parent owner
         (by simpa [h_owner] using h_spawn_mem)
@@ -1091,30 +1091,6 @@ lemma model_from_history_base_closure_lt_timestamp {H : History} {t : Event → 
       have h_lt1 : t e1 < t z := ih
       have h_lt2 : t z < t w := model_from_history_base_rel_lt_timestamp h_wf h_twf _ _ h_step
       exact Nat.lt_trans h_lt1 h_lt2
-
-lemma wf_cown_history_complete_has_run {cs bid} :
-    wf_cown_history cs →
-    Event.Complete bid ∈ cs →
-    Event.Run bid ∈ cs :=
-  by
-    introv h_wfc h_complete_mem
-    induction cs using wf_cown_history.induct with
-    | case1 => simp at h_complete_mem
-    | case2 _ => simp at h_complete_mem
-    | case3 bid1 bid2 cs' ih =>
-      simp [wf_cown_history] at h_wfc
-      rcases h_wfc with ⟨h_bid_eq, h_wfc'⟩
-      subst h_bid_eq
-      grind
-    | case4 cs' h_nil h_run ih =>
-      rcases cs' with _ | ⟨e, cs''⟩ <;> simp at h_complete_mem
-      cases cs'' with
-      | nil =>
-        rcases e <;> simp [wf_cown_history] at h_wfc
-        grind
-      | cons e' cs''' =>
-        rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
-        grind
 
 -- TODO: See if this can be simplified (started inside)
 lemma head_lt_of_mem_ordered {A} {ord : A → Nat} {x : A} {xs : List A} {y : A} :
@@ -1298,7 +1274,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
       simp at h_hb
     rcases h_hb with ⟨h_po_co_r, h_overlap, h_c, h_r⟩
 
-    have h_twf : History.timestamp_wf H t := h_wf.2.2.2.2.2.1
+    have h_twf : History.timestamp_wf H t := h_wf.timestampWf
     have h_twf_flat :
       (∀bid e1 e2, [e1, e2] <:+: H.behaviors bid → t e1 < t e2)
       ∧ (∀c e1 e2, [e1, e2] <:+: H.cowns c → t e1 < t e2)
@@ -1363,7 +1339,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
           rcases h_complete2 with ⟨e, h_co2⟩
           have h_complete2_cown : .Complete bid2 ∈ H.cowns c := by
             simp [model_from_history] at h_co2; grind
-          exact wf_cown_history_complete_has_run (h_wf.2.2.1 c) h_complete2_cown
+          exact wf_cown_history_complete_has_run (h_wf.cownWf c) h_complete2_cown
 
     clear h_overlap
 
@@ -1374,7 +1350,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
       · exact h_cr
       · exfalso
         have h_mem1' : .Complete bid2 ∈ H.cowns c := by
-          have h_wfc : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+          have h_wfc : wf_cown_history (H.cowns c) := h_wf.cownWf c
           have h_le : t (Event.Run bid2) ≤ t (Event.Complete bid1) := by
             exact Nat.le_of_not_gt (by grind)
           exact wf_cown_history_run_has_complete_of_not_last_by_time
@@ -1384,7 +1360,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
           have ⟨init, tail, h_eq⟩ : ∃init tail, H.cowns c = init ++ .Complete bid1 :: tail := by
             exact List.mem_iff_append.mp h_mem1
           have h_wfc : wf_cown_history (init ++ .Complete bid1 :: tail) := by
-            simpa [h_eq] using (h_wf.2.2.1 c)
+            simpa [h_eq] using (h_wf.cownWf c)
           have ⟨init', h_eq'⟩ := wf_cown_history_complete_pred h_wfc
           rw [h_eq, h_eq']
           simp
@@ -1400,7 +1376,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
                 ∃ init tail, H.cowns c = init ++ Event.Complete bid1 :: tail := by
               exact List.mem_iff_append.mp h_mem1
             have h_wfc1 : wf_cown_history (init ++ Event.Complete bid1 :: tail) := by
-              simpa [h_eq] using (h_wf.2.2.1 c)
+              simpa [h_eq] using (h_wf.cownWf c)
             have ⟨init', h_init⟩ := wf_cown_history_complete_pred h_wfc1
             exists init', tail
             simp [h_eq, h_init, List.append_assoc]
@@ -1411,7 +1387,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
                 ∃ init tail, H.cowns c = init ++ Event.Complete bid2 :: tail := by
               exact List.mem_iff_append.mp h_mem1'
             have h_wfc2 : wf_cown_history (init ++ Event.Complete bid2 :: tail) := by
-              simpa [h_eq] using (h_wf.2.2.1 c)
+              simpa [h_eq] using (h_wf.cownWf c)
             have ⟨init', h_init⟩ := wf_cown_history_complete_pred h_wfc2
             exists init', tail
             simp [h_eq, h_init, List.append_assoc]
@@ -1485,7 +1461,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
           h_twf_spawn_order c bid2 bid1 h_mem1' h_mem2' h_lt'
         exact Nat.lt_asymm h_lt h_lt_rev
 
-    have h_wf_c : wf_cown_history (H.cowns c) := h_wf.2.2.1 c
+    have h_wf_c : wf_cown_history (H.cowns c) := h_wf.cownWf c
     have ⟨init, mid, tail, h_c_eq⟩ : ∃init mid tail,
         H.cowns c = init ++ .Complete bid1 :: mid ++ .Run bid2 :: tail := by
       exact list_order_lt_inv h_lt' h_mem1 h_mem2 (h_twf_co c)
@@ -1543,7 +1519,7 @@ lemma model_from_history_base_closure_acyclic {t} {H : History} :
       e1 ≠ e2 :=
   by
     intro h_wf e1 e2 h_clos
-    have h_twf : History.timestamp_wf H t := h_wf.2.2.2.2.2.1
+    have h_twf : History.timestamp_wf H t := h_wf.timestampWf
     have h_lt : t e1 < t e2 :=
       model_from_history_base_closure_lt_timestamp (H := H) (t := t) h_wf h_twf e1 e2 h_clos
     exact timestamp_lt_event_neq h_lt
@@ -1586,10 +1562,8 @@ theorem model_from_history_complete {H : History} :
       rcases h_run_in with ⟨bid', h_in⟩
 
       apply po_trans_pick_bid (bid := bid)
-      have h_twf := h_wf.2.2.2.2.2.1
-      have h_wf_b : wf_behavior_history bid' (H.behaviors bid') := by
-        simp at h_wf
-        grind
+      have h_twf := h_wf.timestampWf
+      have h_wf_b : wf_behavior_history bid' (H.behaviors bid') := h_wf.behaviorWf bid'
       have h_eq : bid' = bid := wf_history_run_mem_inv h_wf_b h_in
       subst h_eq
       have h_no_dup := wf_behavior_history_no_dup h_wf_b (h_twf.1 bid')

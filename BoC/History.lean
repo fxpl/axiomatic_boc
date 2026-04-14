@@ -176,27 +176,21 @@ def History.timestamp_wf (H : History) (t : Event → Nat) : Prop :=
     t (.Complete bid1) < t (.Run bid2) →
     t (.Spawn bid1) < t (.Spawn bid2))
 
-@[simp]
-def History.wf (t : Event → Nat) (H : History) : Prop :=
+structure History.wf (t : Event → Nat) (H : History) : Prop where
   -- Behavior histories are well-formed
-  (∀bid, wf_behavior_history bid (H.behaviors bid))
-  ∧
+  behaviorWf : ∀bid, wf_behavior_history bid (H.behaviors bid)
   -- Spawn events are unique across behaviors
-  unique_spawns H.behaviors
-  ∧
+  uniqueSpawns : unique_spawns H.behaviors
   -- Cown histories are well-formed
-  (∀c, wf_cown_history (H.cowns c))
-  ∧
+  cownWf : ∀c, wf_cown_history (H.cowns c)
   -- Every cown event corresponds to some behavior event
-  (∀c e, e ∈ H.cowns c → ∃bid, e ∈ H.behaviors bid)
-  ∧
+  cownEvent : ∀c e, e ∈ H.cowns c → ∃bid, e ∈ H.behaviors bid
   -- If a behavior ran on a cown and later completed, the completion appears in that cown's history
-  (∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c)
-  ∧
+  completeOnCown :
+    ∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c
   -- There exists a global timestamping that is monotone on history edges.
-  History.timestamp_wf H t
-  ∧
-  (∃top, ∀e ∈ History.events H, t e < top)
+  timestampWf : History.timestamp_wf H t
+  hasTop : ∃top, ∀e ∈ History.events H, t e < top
 
 notation t "⊢" H => History.wf t H
 
@@ -223,7 +217,7 @@ private def cyclic_history : History :=
 example (t : Event → Nat) : ¬ (t ⊢ cyclic_history) :=
   by
     intro h_contra
-    have h_twf := h_contra.2.2.2.2.2.1
+    have h_twf := h_contra.timestampWf
     have h_beh_twf := h_twf.1
     have h_spawn_run_twf := h_twf.2.2.1
     have h_infix01 : [Event.Run 0, Event.Spawn 1] <:+: cyclic_history.behaviors 0 := by
@@ -600,7 +594,6 @@ lemma wf_history_event_unique {t} {H bid1 bid2 e} :
     bid1 = bid2 :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, _, _⟩
     intro h_mem1 h_mem2
     cases e with
     | Spawn bid =>
@@ -608,15 +601,15 @@ lemma wf_history_event_unique {t} {H bid1 bid2 e} :
       · exact h_eq
       · exfalso
         have h_not_mem : .Spawn bid ∉ H.behaviors bid2 :=
-          h_unique bid1 bid2 bid h_eq h_mem1
+          h_wf.uniqueSpawns bid1 bid2 bid h_eq h_mem1
         exact h_not_mem h_mem2
     | Run bid =>
-      have h1 : bid1 = bid := wf_history_run_mem_inv (h_behaviors bid1) h_mem1
-      have h2 : bid2 = bid := wf_history_run_mem_inv (h_behaviors bid2) h_mem2
+      have h1 : bid1 = bid := wf_history_run_mem_inv (h_wf.behaviorWf bid1) h_mem1
+      have h2 : bid2 = bid := wf_history_run_mem_inv (h_wf.behaviorWf bid2) h_mem2
       grind
     | Complete bid =>
-      have h1 : bid1 = bid := wf_history_complete_mem_inv (h_behaviors bid1) h_mem1
-      have h2 : bid2 = bid := wf_history_complete_mem_inv (h_behaviors bid2) h_mem2
+      have h1 : bid1 = bid := wf_history_complete_mem_inv (h_wf.behaviorWf bid1) h_mem1
+      have h2 : bid2 = bid := wf_history_complete_mem_inv (h_wf.behaviorWf bid2) h_mem2
       grind
 
 lemma wf_cown_history_complete_has_run {cs bid} :

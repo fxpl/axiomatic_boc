@@ -91,6 +91,15 @@ lemma pair_infix_inv {A} {l : List A} {x1 x2} :
       exists ys, tail
       simp
 
+lemma pair_infix_mem {A} {l : List A} {x1 x2} :
+    [x1, x2] <:+: l →
+    x1 ∈ l ∧ x2 ∈ l :=
+  by
+    introv h_infix
+    rcases h_infix with ⟨init, tail, h_eq⟩
+    subst h_eq
+    simp
+
 lemma no_dup_pair_eq_r {A} {l : List A} {x1 x2 x3} :
     List.Pairwise (· ≠ ·) l →
     [x1, x2] <:+: l →
