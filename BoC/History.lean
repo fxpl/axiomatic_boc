@@ -173,9 +173,10 @@ structure History.wf (t : Event → Nat) (H : History) : Prop where
   -- If a behavior ran on a cown and later completed, the completion appears in that cown's history
   completeOnCown :
     ∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c
-  -- There exists a global timestamping that is monotone on history edges.
+  -- If a behavior ran on a cown, it must have been spawned by some behavior
   spawnOnCown :
     ∀c bid, .Run bid ∈ H.cowns c → ∃bid', .Spawn bid ∈ H.behaviors bid'
+  -- There exists a global timestamping that is monotone on history edges.
   timestampWf : History.timestamp_wf H t
   hasTop : ∃top, ∀e ∈ History.events H, t e < top
 

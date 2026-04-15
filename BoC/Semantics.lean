@@ -2547,5 +2547,4 @@ theorem starting_cfg_wf {s} :
       · constructor <;> try simp <;> grind
       · constructor <;> try simp [CfgFreshness]
 
-
 end ConcurrentSemantics
