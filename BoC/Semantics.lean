@@ -320,6 +320,82 @@ lemma history_matches_cfg_freshness {H t cfg} :
       have h_fresh := h_matches.freshBehaviorHistory parent (.Spawn b.bid) h_spawn_mem
       simpa [Event.fresh] using h_fresh
 
+lemma pairwise_spawn_time_transport_with_top
+    {t : Event → Nat} {fresh top : BId} {l : List Behavior} :
+    List.Pairwise
+      (fun b1 b2 => t (Event.Spawn b1.bid) < t (Event.Spawn b2.bid))
+      l →
+    (∀ b : Behavior, b ∈ l → b.bid < fresh) →
+    List.Pairwise
+      (fun a b =>
+        (if a.bid = fresh then top else t (Event.Spawn a.bid)) <
+        (if b.bid = fresh then top else t (Event.Spawn b.bid)))
+      l := by
+  intro h_pw
+  induction h_pw with
+  | nil =>
+    intro _
+    simp
+  | @cons a l h_head h_tail ih =>
+    intro h_lt_all
+    simp
+    constructor
+    · intro b h_mem
+      have h_lt := h_head b h_mem
+      have ha_lt : a.bid < fresh := h_lt_all a (by simp)
+      have hb_lt : b.bid < fresh := h_lt_all b (by simp [h_mem])
+      have ha_ne : a.bid ≠ fresh := Nat.ne_of_lt ha_lt
+      have hb_ne : b.bid ≠ fresh := Nat.ne_of_lt hb_lt
+      simpa [ha_ne, hb_ne] using h_lt
+    · apply ih
+      intro b h_mem
+      exact h_lt_all b (by simp [h_mem])
+
+lemma wf_cown_history_append_complete_of_run_not_complete
+    {hist : List Event} {bid : BId} :
+    wf_cown_history hist →
+    Event.Run bid ∈ hist →
+    Event.Complete bid ∉ hist →
+    wf_cown_history (hist ++ [Event.Complete bid]) := by
+  intro h_wfc h_run_mem h_ncomplete
+  induction hist using wf_cown_history.induct with
+  | case1 =>
+    simp at h_run_mem
+  | case2 b =>
+    simp at h_run_mem
+    subst h_run_mem
+    simp [wf_cown_history]
+  | case3 b1 b2 hist' ih =>
+    simp [wf_cown_history] at h_wfc
+    rcases h_wfc with ⟨h_eq, h_wfc'⟩
+    subst h_eq
+    have h_run_tail : Event.Run bid ∈ hist' := by
+      simp at h_run_mem
+      rcases h_run_mem with h_head | h_tail
+      · exfalso
+        have h_comp_mem :
+            Event.Complete bid ∈ Event.Run b1 :: Event.Complete b1 :: hist' := by
+          simp [h_head]
+        exact h_ncomplete h_comp_mem
+      · exact h_tail
+    have h_ncomplete_tail : Event.Complete bid ∉ hist' := by
+      intro h_mem
+      exact h_ncomplete (by simp [h_mem])
+    have h_tail_wf := ih h_wfc' h_run_tail h_ncomplete_tail
+    simp [wf_cown_history, h_tail_wf]
+  | case4 hist' h_nil h_run h_rc =>
+    rcases hist' with _ | ⟨e, hist''⟩
+    · simp at h_nil
+    · cases hist'' with
+      | nil =>
+        rcases e <;> simp [wf_cown_history] at h_wfc
+        · exfalso
+          exact h_run _ rfl
+      | cons e' hist''' =>
+        rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
+        · exfalso
+          exact h_rc _ _ _ rfl
+
 -- Combined invariant used across semantic steps:
 -- history correspondence + configuration-only well-formedness.
 structure CfgHistoryInv (H : History) (t : Event → Nat) (cfg : Cfg) : Prop where
@@ -797,39 +873,7 @@ lemma history_matches_preservation_spawn
         have h_pw' : List.Pairwise
             (fun b1 b2 => t (Event.Spawn b1.bid) < t (Event.Spawn b2.bid)) pending := by
           simpa [List.pairwise_map] using h_pw
-        have h_main :
-            ∀ (l : List Behavior),
-              List.Pairwise
-                (fun (b1 b2 : Behavior) =>
-                  t (Event.Spawn b1.bid) < t (Event.Spawn b2.bid))
-                l →
-              (∀ (b : Behavior), b ∈ l → b.bid < fresh) →
-              List.Pairwise
-                (fun (a b : Behavior) =>
-                  (if a.bid = fresh then top else t (Event.Spawn a.bid)) <
-                  (if b.bid = fresh then top else t (Event.Spawn b.bid)))
-                l := by
-          intro l h_pw_l
-          -- TODO: Extract to lemma
-          induction h_pw_l with
-          | nil =>
-            intro _
-            simp
-          | @cons a l h_head h_tail ih =>
-            intro h_lt_all
-            simp
-            constructor
-            · intro b h_mem
-              have h_lt := h_head b h_mem
-              have ha_lt : a.bid < fresh := h_lt_all a (by simp)
-              have hb_lt : b.bid < fresh := h_lt_all b (by simp [h_mem])
-              have ha_ne : a.bid ≠ fresh := Nat.ne_of_lt ha_lt
-              have hb_ne : b.bid ≠ fresh := Nat.ne_of_lt hb_lt
-              simpa [ha_ne, hb_ne] using h_lt
-            · apply ih
-              intro b h_mem
-              exact h_lt_all b (by simp [h_mem])
-        apply h_main pending h_pw'
+        apply pairwise_spawn_time_transport_with_top (l := pending) h_pw'
         intro b h_mem
         exact h_pending_fresh b h_mem
       · simp
@@ -936,58 +980,14 @@ lemma wf_history_preservation_complete
     · intro c
       by_cases h_c : c ∈ cs
       · simp [History.add_cown_event, h_c]
-        have h_append_complete :
-            ∀hist,
-              wf_cown_history hist →
-              Event.Run bid ∈ hist →
-              Event.Complete bid ∉ hist →
-              wf_cown_history (hist ++ [Event.Complete bid]) := by
-          intro hist h_wfc h_run_mem h_ncomplete
-          -- TODO: Extract to lemma
-          induction hist using wf_cown_history.induct with
-          | case1 =>
-            simp at h_run_mem
-          | case2 b =>
-            simp at h_run_mem
-            subst h_run_mem
-            simp [wf_cown_history]
-          | case3 b1 b2 hist' ih =>
-            simp [wf_cown_history] at h_wfc
-            rcases h_wfc with ⟨h_eq, h_wfc'⟩
-            subst h_eq
-            have h_run_tail : Event.Run bid ∈ hist' := by
-              simp at h_run_mem
-              rcases h_run_mem with h_head | h_tail
-              · exfalso
-                have h_comp_mem :
-                    Event.Complete bid ∈ Event.Run b1 :: Event.Complete b1 :: hist' := by
-                  simp [h_head]
-                exact h_ncomplete h_comp_mem
-              · exact h_tail
-            have h_ncomplete_tail : Event.Complete bid ∉ hist' := by
-              intro h_mem
-              exact h_ncomplete (by simp [h_mem])
-            have h_tail_wf := ih h_wfc' h_run_tail h_ncomplete_tail
-            simp [wf_cown_history, h_tail_wf]
-          | case4 hist' h_nil h_run h_rc =>
-            rcases hist' with _ | ⟨e, hist''⟩
-            · simp at h_nil
-            · cases hist'' with
-              | nil =>
-                rcases e <;> simp [wf_cown_history] at h_wfc
-                · exfalso
-                  exact h_run _ rfl
-              | cons e' hist''' =>
-                rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
-                · exfalso
-                  exact h_rc _ _ _ rfl
         have h_running_bid :
             ∃b ∈ bs1 ++ { bid := bid, cowns := cs, stmt := Stmt.done } :: bs2,
               b.bid = bid ∧ c ∈ b.cowns := by
           refine ⟨{ bid := bid, cowns := cs, stmt := Stmt.done }, ?_, rfl, h_c⟩
           simp
         have h_run_ncomplete := (h_matches.cownRunning bid c).1 h_running_bid
-        exact h_append_complete (H.cowns c) (h_wf.cownWf c) h_run_ncomplete.1 h_run_ncomplete.2
+        exact wf_cown_history_append_complete_of_run_not_complete
+          (h_wf.cownWf c) h_run_ncomplete.1 h_run_ncomplete.2
       · simp [History.add_cown_event, h_c]
         exact h_wf.cownWf c
     · intro c e h_mem

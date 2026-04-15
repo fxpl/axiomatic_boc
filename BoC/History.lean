@@ -127,15 +127,6 @@ def wf_behavior_history (bid : BId) : List Event → Prop
       wf_behavior_history_tail bid tail
 | _ => False
 
--- TODO: Could use this instead
--- inductive WfBehaviorHistory (bid : BId) : List Event → Prop where
--- | Empty :
---     WfBehaviorHistory bid []
--- | NonEmpty {spawns tail} :
---     (∀e, e ∈ spawns → is_spawn e) →
---     wf_behavior_history_tail bid tail →
---     WfBehaviorHistory bid (.Run bid :: spawns ++ tail)
-
 def wf_cown_history : List Event → Prop
 | [] => True
 | [.Run _] => True
