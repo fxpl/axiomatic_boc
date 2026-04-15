@@ -18,6 +18,10 @@ def b2 : BId := 2
 def b3 : BId := 3
 def b4 : BId := 4
 
+instance BIdDecEq : DecidableEq BId := by
+  intros bid1 bid2
+  apply Nat.decEq
+
 -- TODO: This stuff is in Mathlib, but I couldn't get it to work properly.
 @[simp]
 def is_reflective {α : Type} (r : α → α → Prop) : Prop :=
@@ -75,6 +79,58 @@ postfix:80 " * " => Relation.ReflTransGen
 
 
 -- Relation lemmas
+lemma rel_clos_weaken {A} {R S : A → A → Prop} {x y : A} :
+  (∀x y, R x y → S x y) →
+  (R*) x y →
+  (S*) x y :=
+  by
+    introv h_subset h_clos
+    induction h_clos with
+    | refl => constructor
+    | @tail z w h_clos h_infix ih =>
+      apply Relation.ReflTransGen.tail ih
+      apply h_subset
+      assumption
+
+lemma rel_trans_clos_weaken {A} {R S : A → A → Prop} {x y : A} :
+  (∀x y, R x y → S x y) →
+  (R+) x y →
+  (S+) x y :=
+  by
+    introv h_subset h_clos
+    induction h_clos with
+    | single h_infix =>
+      constructor
+      apply h_subset
+      assumption
+    | @tail z w h_clos h_infix ih =>
+      apply Relation.TransGen.tail ih
+      apply h_subset
+      assumption
+
+lemma refl_trans_clos_exists_pick {A} {B} {x y : A} {P : A → A → B → Prop} {b : B} :
+    ((fun e1 e2 ↦ P e1 e2 b)*) x y →
+    ((fun e1 e2 ↦ ∃ b, P e1 e2 b)*) x y :=
+  by
+    introv h_clos
+    induction h_clos with
+    | refl => constructor
+    | @tail z w h_clos h_infix ih =>
+      apply Relation.ReflTransGen.tail ih
+      exists b
+
+lemma trans_clos_exists_pick {A} {B} {x y : A} {P : A → A → B → Prop} {b : B} :
+    ((fun e1 e2 ↦ P e1 e2 b)+) x y →
+    ((fun e1 e2 ↦ ∃ b, P e1 e2 b)+) x y :=
+  by
+    introv h_clos
+    induction h_clos with
+    | @single a =>
+      constructor
+      exists b
+    | @tail z w h_clos h_infix ih =>
+      apply Relation.TransGen.tail ih
+      exists b
 
 -- List lemmas
 lemma pair_infix_inv {A} {l : List A} {x1 x2} :
@@ -282,8 +338,8 @@ lemma no_dup_middle_inv {A} {x : A} {l1 l2 l1' l2' : List A} :
         · exact h_l2
 
 lemma pair_infix_refl_trans_clos_append_left {A} {l1 l2 : List A} {x y} :
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1) *) x y →
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2) *) x y :=
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1)*) x y →
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2)*) x y :=
   by
     intro h_clos
     induction h_clos with
@@ -297,8 +353,8 @@ lemma pair_infix_refl_trans_clos_append_left {A} {l1 l2 : List A} {x y} :
       simp [List.append_assoc]
 
 lemma pair_infix_refl_trans_clos_append_right {A} {l1 l2 : List A} {x y} :
-  ((fun e1 e2 ↦ [e1, e2] <:+: l2) *) x y →
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2) *) x y :=
+  ((fun e1 e2 ↦ [e1, e2] <:+: l2)*) x y →
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2)*) x y :=
   by
     intro h_clos
     induction h_clos with
@@ -312,8 +368,8 @@ lemma pair_infix_refl_trans_clos_append_right {A} {l1 l2 : List A} {x y} :
       simp [List.append_assoc]
 
 lemma pair_infix_trans_clos_append_left {A} {l1 l2 : List A} {x y} :
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1) +) x y →
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2) +) x y :=
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1)+) x y →
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2)+) x y :=
   by
     intro h_clos
     induction h_clos with
@@ -331,8 +387,8 @@ lemma pair_infix_trans_clos_append_left {A} {l1 l2 : List A} {x y} :
       simp [List.append_assoc]
 
 lemma pair_infix_trans_clos_append_right {A} {l1 l2 : List A} {x y} :
-  ((fun e1 e2 ↦ [e1, e2] <:+: l2) +) x y →
-  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2) +) x y :=
+  ((fun e1 e2 ↦ [e1, e2] <:+: l2)+) x y →
+  ((fun e1 e2 ↦ [e1, e2] <:+: l1 ++ l2)+) x y :=
   by
     intro h_clos
     induction h_clos with
@@ -399,7 +455,6 @@ lemma pair_infix_trans_clos_middle {A} {x y : A} {mid tail : List A} :
         refine ⟨[], zs ++ y :: tail, ?_⟩
         simp
       exact Relation.TransGen.trans (Relation.TransGen.single h_xz) h_tail'
-
 
 lemma pair_refl_trans_iff {A} {x y : A} {l} :
   List.Pairwise (· ≠ ·) l →
@@ -539,10 +594,8 @@ lemma list_snoc_eq_inv {A} {l1 l2 : List A} {x1 x2 : A} :
   by
     simp
 
--- If timestamps are strictly increasing for every adjacent pair in a list,
--- then all elements are pairwise distinct.
-lemma pairwise_ne_of_pair_ordered {A} {t : A → Nat} {l : List A} :
-    (∀ e1 e2, [e1, e2] <:+: l → t e1 < t e2) →
+lemma pairwise_ne_of_pair_ordered {A} {ord : A → Nat} {l : List A} :
+    (∀ e1 e2, [e1, e2] <:+: l → ord e1 < ord e2) →
     List.Pairwise (· ≠ ·) l := by
   intro h_ts
   induction l with
@@ -557,13 +610,157 @@ lemma pairwise_ne_of_pair_ordered {A} {t : A → Nat} {l : List A} :
       rw [h_eq]
       simpa [List.append_assoc] using
         pair_infix_trans_clos_middle (x := x) (y := y) (mid := mid) (tail := tl)
-    have close_lt : ∀ {u v : A}, ((fun e1 e2 => [e1, e2] <:+: (x :: xs))+) u v → t u < t v := by
+    have close_lt : ∀ {u v : A}, ((fun e1 e2 => [e1, e2] <:+: (x :: xs))+) u v → ord u < ord v := by
       intro u v h
       induction h with
       | single h => exact h_ts _ _ h
       | tail _ h ih_step => exact Nat.lt_trans ih_step (h_ts _ _ h)
-    exact fun h_eq => (Nat.ne_of_lt (close_lt h_path)) (congrArg t h_eq)
+    exact fun h_eq => (Nat.ne_of_lt (close_lt h_path)) (congrArg ord h_eq)
 
-def bad_example : Prop := 3 < 2
--- ∃n∈N. 5 < n ∧ n<10
-def example2 := ∃n : ℕ, 5 < n ∧ n < 10
+lemma head_lt_of_mem_ordered {A} {ord : A → Nat} {x : A} {xs : List A} {y : A} :
+    y ∈ xs →
+    (∀ e1 e2, [e1, e2] <:+: (x :: xs) → ord e1 < ord e2) →
+    ord x < ord y := by
+  intro h_mem h_ord
+  rcases List.mem_iff_append.mp h_mem with ⟨mid, tail, h_split⟩
+  have h_path : ((fun e1 e2 ↦ [e1, e2] <:+: (x :: xs))+) x y := by
+    rw [h_split]
+    simpa [List.append_assoc] using
+      (pair_infix_trans_clos_middle (x := x) (y := y) (mid := mid) (tail := tail))
+  have h_ord_path : ((fun e1 e2 ↦ ord e1 < ord e2)+) x y := by
+    exact rel_trans_clos_weaken (fun _ _ h_infix => h_ord _ _ h_infix) h_path
+  have h_close_lt :
+      ∀ {u v : A}, ((fun e1 e2 ↦ ord e1 < ord e2)+) u v → ord u < ord v := by
+    intro u v h_clos
+    induction h_clos with
+    | single h_step => exact h_step
+    | tail h_prev h_step ih => exact Nat.lt_trans ih h_step
+  exact h_close_lt h_ord_path
+
+lemma list_order_lt_inv {A} {l : List A} {a b : A} {ord : A → ℕ} :
+    ord a < ord b →
+    a ∈ l →
+    b ∈ l →
+    (∀e1 e2, [e1, e2] <:+: l → ord e1 < ord e2) →
+    ∃ init mid tail, l = init ++ a :: mid ++ b :: tail :=
+  by
+    induction l with
+    | nil =>
+      intro h_lt h_a_mem
+      cases h_a_mem
+    | cons x xs ih =>
+      intro h_lt h_a_mem h_b_mem h_ord
+      simp at h_a_mem h_b_mem
+      cases h_a_mem with
+      | inl h_ax =>
+        subst h_ax
+        cases h_b_mem with
+        | inl h_bx =>
+          subst h_bx
+          exact False.elim (Nat.lt_irrefl _ h_lt)
+        | inr h_b_tail =>
+          rcases List.mem_iff_append.mp h_b_tail with ⟨mid, tail, h_split⟩
+          exact ⟨[], mid, tail, by simp [h_split]⟩
+      | inr h_a_tail =>
+        cases h_b_mem with
+        | inl h_bx =>
+          subst h_bx
+          have h_ba : ord b < ord a := head_lt_of_mem_ordered h_a_tail h_ord
+          exact False.elim (Nat.lt_asymm h_lt h_ba)
+        | inr h_b_tail =>
+          have h_ord_tail :
+              ∀e1 e2, [e1, e2] <:+: xs → ord e1 < ord e2 := by
+            intro e1 e2 h_infix
+            apply h_ord
+            rcases h_infix with ⟨init, tail, h_eq⟩
+            exact ⟨x :: init, tail, by simp [h_eq]⟩
+          rcases ih h_lt h_a_tail h_b_tail h_ord_tail with ⟨init, mid, tail, h_eq⟩
+          exact ⟨x :: init, mid, tail, by simp [h_eq, List.append_assoc]⟩
+
+lemma list_index_lt_inv {A} {x y : A} {l : List A} {i j : Nat} :
+  l[i]? = some x →
+  l[j]? = some y →
+  i < j →
+  ∃init mid tail, l = init ++ x :: mid ++ y :: tail :=
+  by
+    introv h_i h_j h_lt
+    induction l generalizing i j with
+    | nil => rcases i <;> simp at h_i
+    | cons z zs ih =>
+      cases h_lt with
+      | refl =>
+        simp at h_i h_j
+        cases i with
+        | zero =>
+          simp at h_i h_j
+          subst h_i
+          cases zs with
+          | nil => simp at h_j
+          | cons z' zs' =>
+            simp at h_j
+            subst h_j
+            exists [], [], zs'
+        | succ i' =>
+          simp at h_i
+          have ⟨init, mid, tail, h_eq⟩ := ih h_i h_j (by simp)
+          subst h_eq
+          grind
+      | @step k h_le =>
+        cases i with
+        | zero =>
+          simp at h_i h_j
+          subst h_i
+          have h_in : y ∈ zs := by
+            grind
+          have ⟨init, tail, h_eq⟩ : exists init tail, zs = init ++ y :: tail := by
+            rcases List.mem_iff_append.mp h_in with ⟨init, tail, h_eq⟩
+            exists init, tail
+          subst h_eq
+          exists [], init, tail
+        | succ i' =>
+          simp at h_i h_j
+          have h_lt : i' < k := by grind
+          have ⟨init, mid, tail, h_eq⟩ := ih h_i h_j h_lt
+          grind
+
+lemma list_two_pairs_inv {A} {a b c d : A} {l init init' tail tail' : List A} :
+  a ≠ c →
+  a ≠ d →
+  b ≠ c →
+  l = init' ++ a :: b :: tail' →
+  l = init ++ c :: d :: tail →
+  (∃init'' mid tail'', l = init'' ++ a :: b :: mid ++ c :: d :: tail'') ∨
+  (∃init'' mid tail'', l = init'' ++ c :: d :: mid ++ a :: b :: tail'') :=
+  by
+    intro h_ac h_ad h_bc h_ab h_cd
+    induction init' generalizing l init with
+    | nil =>
+      simp at h_ab
+      rcases init with _ | ⟨x, init'⟩ <;> simp at h_cd; · grind
+      rcases init' with _ | ⟨y, init''⟩ <;> simp at h_cd; · grind
+      subst h_cd
+      simp at h_ab
+      rcases h_ab with ⟨h_eq1, h_eq2, h_eq3⟩
+      subst h_eq1 h_eq2
+      left
+      exists [], init'', tail
+    | cons x xs ih =>
+      simp at h_ab
+      cases init with
+      | nil =>
+        simp at h_cd
+        rcases xs with _ | ⟨y, ys⟩ <;> simp at h_ab; · grind
+        subst h_cd
+        simp at h_ab
+        rcases h_ab with ⟨h_eq1, h_eq2, h_eq3⟩
+        subst h_eq1 h_eq2 h_eq3
+        right
+        exists [], ys, tail'
+      | cons y ys =>
+        simp at h_cd
+        subst h_cd
+        simp at h_ab
+        rcases h_ab with ⟨h_eq1, h_eq2⟩
+        subst h_eq1
+        rw [←h_eq2] at ih
+        cases (ih (l := ys ++ c :: d :: tail) (init := ys) rfl rfl) <;> grind

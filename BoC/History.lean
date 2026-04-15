@@ -67,11 +67,6 @@ theorem Event.lt_neq (e1 e2 : Event) :
     intro h_lt
     rcases e1 <;> rcases e2 <;> simp at h_lt <;> grind
 
--- TODO: Move to Common.lean
-instance BIdDecEq : DecidableEq BId := by
-  intros bid1 bid2
-  apply Nat.decEq
-
 instance EventDecEq : DecidableEq Event := by
   intros e1 e2
   rcases e1 with bid1 | bid1 | bid1 <;>
@@ -169,7 +164,6 @@ def History.timestamp_wf (H : History) (t : Event → Nat) : Prop :=
     t (.Spawn bid) < t (.Run bid))
   ∧
   -- This corresponds to happens-before
-  -- TODO: Can we prove preservation of this?
   (∀c bid1 bid2,
     .Complete bid1 ∈ H.cowns c →
     .Run bid2 ∈ H.cowns c →
@@ -238,7 +232,6 @@ example (t : Event → Nat) : ¬ (t ⊢ cyclic_history) :=
       exact Nat.lt_trans h_r0_s1 (Nat.lt_trans h_s1_r1 (Nat.lt_trans h_r1_s0 h_s0_r0))
     exact Nat.lt_irrefl _ h_loop
 
--- TODO: Sort theorems and lemmas
 theorem empty_history_wf :
   (t : Event → Nat) → t ⊢ History.empty :=
   by
@@ -394,15 +387,6 @@ lemma wf_history_tail_mem_inv {bid es} :
         subst h_in
         simp
 
--- TODO: Remove this and prove inline instead (similar for several lemmas below)
-theorem wf_history_spawns_no_run {es : List Event} :
-    (∀e, e ∈ es → is_spawn e) →
-    ∀e ∈ es, ¬is_run e :=
-  by
-    intro h_spawns e h_in
-    have h_is := h_spawns e h_in
-    rcases e <;> simp at h_is ⊢
-
 theorem wf_history_spawns_mem_inv {es : List Event} :
     (∀e, e ∈ es → is_spawn e) →
     ∀e ∈ es, is_spawn e :=
@@ -447,7 +431,7 @@ theorem wf_behavior_history_pair_inv {bid es e1 e2} :
         intro e
         intro h_mem
         rcases List.mem_append.mp h_mem with h_mem_spawns | h_mem_tail
-        · have h_is := wf_history_spawns_mem_inv h_spawns e h_mem_spawns
+        · have h_is : is_spawn e := wf_history_spawns_mem_inv h_spawns e h_mem_spawns
           rcases e <;> simp at h_is ⊢
         · have h_is := wf_history_tail_mem_inv h_tail e h_mem_tail
           rcases e <;> simp at h_is ⊢
@@ -637,3 +621,28 @@ lemma wf_cown_history_complete_has_run {cs bid} :
       | cons e' cs''' =>
         rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wfc
         grind
+
+lemma wf_cown_history_mem_no_spawn {es e} :
+    wf_cown_history es →
+    e ∈ es →
+    ¬is_spawn e :=
+  by
+    intro h_wf h_in
+    induction es using wf_cown_history.induct with
+    | case1 => trivial
+    | case2 bid =>
+      simp at h_in
+      subst h_in
+      simp
+    | case3 bid1 bid2 es ih =>
+      simp at h_in
+      rcases h_in with h_eq | h_eq | h_mem
+      · subst h_eq
+        simp
+      · subst h_eq
+        simp
+      · simp [wf_cown_history] at h_wf
+        grind
+    | case4 es h_nempty h_nsingle ih =>
+      rcases es with _ | ⟨e', es'⟩ <;> try grind
+      simp [wf_cown_history] at h_wf
