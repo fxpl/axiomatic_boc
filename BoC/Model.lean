@@ -213,7 +213,7 @@ lemma model_from_history_po_shape {H : History} :
       | _, _ => False :=
   by
     intro h_wf e1 e2 h_po
-    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, _⟩
+    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, _, _⟩
     rcases h_po with ⟨bid, h_infix⟩
     rcases (wf_behavior_history_pair_inv (h_behaviors bid) h_infix) <;>
       rcases e1 <;> rcases e2 <;> grind [is_run, is_spawn, is_complete]
@@ -226,7 +226,7 @@ lemma model_from_history_po_unique_pred {H : History} :
       e1 = e2 :=
   by
     intro h_wf e1 e2 e3 h13 h23
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, h_twf, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, _, h_twf, _⟩
     rcases h13 with ⟨bid1, h_infix1⟩
     rcases h23 with ⟨bid2, h_infix2⟩
     have h_disj : is_spawn e3 ∨ is_complete e3 := by
@@ -275,7 +275,7 @@ lemma model_from_history_po_unique_succ {H : History} :
       e2 = e3 :=
   by
     intro h_wf e1 e2 e3 h12 h13
-    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, h_twf, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, _, _, _, _, h_twf, _⟩
     rcases h12 with ⟨bid1, h_infix1⟩
     rcases h13 with ⟨bid2, h_infix2⟩
     have h_disj : is_run e1 ∨ is_spawn e1 := by
@@ -323,7 +323,7 @@ lemma model_from_history_po_preceded_by_run {H : History} :
       ∃ bid, ((model_from_history H).po*) (.Run bid) e :=
   by
     intro h_wf e h_in
-    rcases h_wf with ⟨h_behaviors, _, _, _, _, h_twf, _⟩
+    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, h_twf, _⟩
     rcases h_in with ⟨bid, h_in_bid⟩
     refine ⟨bid, ?_⟩
     apply po_pick_bid (bid := bid)
@@ -361,7 +361,7 @@ lemma model_from_history_po_run_complete_same_bid {H : History} :
   by
     intro h_wf bid1 bid2 h_path
     have h_wf' : (t ⊢ H) := h_wf
-    rcases h_wf with ⟨h_behaviors, _, _, _, _, h_twf, _⟩
+    rcases h_wf with ⟨h_behaviors, _, _, _, _, _, h_twf, _⟩
     have ⟨bid, h_trans⟩ := po_exists_inv h_wf' h_path
     have h_no_dup : List.Pairwise (· ≠ ·) (H.behaviors bid) := by
       exact wf_behavior_history_no_dup (h_behaviors bid) (h_twf.1 bid)
@@ -467,7 +467,7 @@ lemma model_from_history_wf_co {H : History} :
     wf_co_relation events co :=
   by
     intro h_wf
-    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order, h_ts, _⟩
+    rcases h_wf with ⟨h_behaviors, h_unique, h_cowns, h_corr, h_order, _, h_ts, _⟩
     and_intros
     · introv h_co
       rcases h_co with ⟨bid1, bid2, init, tail, h_eq1, h_eq2, h_tail⟩

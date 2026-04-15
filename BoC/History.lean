@@ -189,6 +189,8 @@ structure History.wf (t : Event → Nat) (H : History) : Prop where
   completeOnCown :
     ∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c
   -- There exists a global timestamping that is monotone on history edges.
+  spawnOnCown :
+    ∀c bid, .Run bid ∈ H.cowns c → ∃bid', .Spawn bid ∈ H.behaviors bid'
   timestampWf : History.timestamp_wf H t
   hasTop : ∃top, ∀e ∈ History.events H, t e < top
 
@@ -241,11 +243,12 @@ theorem empty_history_wf :
   (t : Event → Nat) → t ⊢ History.empty :=
   by
     intro t
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · simp [wf_behavior_history]
     · intro bid1 bid2 bid h_ne h_mem
       simp at h_mem
     · simp [wf_cown_history]
+    · simp
     · simp
     · simp
     · simp [History.timestamp_wf]
