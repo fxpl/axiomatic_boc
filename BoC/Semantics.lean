@@ -46,14 +46,37 @@ def CfgFreshness : Cfg -> Prop
 -- Configuration-only well-formedness facts (independent of history correspondence)
 structure CfgWf (cfg : Cfg) : Prop where
   freshness : CfgFreshness cfg
-  -- Running behaviors are unique by bid
-  runningUniqueByBid :
-    ∀b1 ∈ cfg.running, ∀b2 ∈ cfg.running,
-      b1.bid = b2.bid →
-      b1 = b2
   -- Running behaviors have no duplicate bids
   runningNoDupsByBid :
     (cfg.running.map Behavior.bid).Pairwise (· ≠ ·)
+
+lemma running_unique_by_bid_of_no_dups {running : List Behavior} :
+      (running.map Behavior.bid).Pairwise (· ≠ ·) →
+      ∀b1 ∈ running, ∀ b2 ∈ running,
+        b1.bid = b2.bid →
+        b1 = b2 :=
+  by
+    intro h_nodup
+    generalize h_map : running.map Behavior.bid = bids
+    rw [h_map] at h_nodup
+    induction h_nodup generalizing running with
+    | nil =>
+      intro b1 hb1
+      simp at h_map
+      simp [h_map] at hb1
+    | @cons bid bids' h_not_mem h_pair ih =>
+      cases running with
+      | nil =>
+        simp at h_map
+      | cons br running' =>
+        grind
+
+-- Derive uniqueness from no-duplicates property
+lemma cfg_wf_running_unique_by_bid {cfg : Cfg} (h : CfgWf cfg) :
+    ∀b1 ∈ cfg.running, ∀b2 ∈ cfg.running,
+      b1.bid = b2.bid →
+      b1 = b2 := by
+  exact running_unique_by_bid_of_no_dups h.runningNoDupsByBid
 
 inductive StepCfg : Cfg × History → Cfg × History → Prop where
 | Spawn {fresh bid : BId} {bs1 bs2 cowns cowns' s s' s'' pending H} :
@@ -84,7 +107,7 @@ lemma cfg_wf_preservation_spawn
         pending := pending ++ [{ bid := fresh, cowns := cowns', stmt := s'' }] } :=
   by
     intro h_cfgwf
-    refine ⟨?_, ?_, ?_⟩
+    refine ⟨?_, ?_⟩
     · rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
       constructor
       · intro b hb_mem
@@ -101,51 +124,6 @@ lemma cfg_wf_preservation_spawn
             simpa using h_new
           subst h_eqb
           exact Nat.lt_succ_self fresh
-    · intro b1 hb1_mem b2 hb2_mem h_bid
-      have h_pair :
-          List.Pairwise (fun x y => x ≠ y)
-            (bs1.map Behavior.bid ++ ([bid] ++ bs2.map Behavior.bid)) := by
-        simpa [List.map_append] using h_cfgwf.runningNoDupsByBid
-      have h_left_sep :
-          ∀x ∈ bs1.map Behavior.bid, x ≠ bid := by
-        intro x hx
-        exact (List.pairwise_append.mp h_pair).2.2 x hx bid (by simp)
-      have h_right_sep :
-          ∀x ∈ bs2.map Behavior.bid, bid ≠ x := by
-        intro x hx
-        have h_mid_pair :
-            List.Pairwise (fun x y => x ≠ y) ([bid] ++ bs2.map Behavior.bid) :=
-          (List.pairwise_append.mp h_pair).2.1
-        exact (List.pairwise_append.mp h_mid_pair).2.2 bid (by simp) x hx
-      simp at hb1_mem hb2_mem
-      rcases hb1_mem with hb1 | hb1 | hb1
-      · rcases hb2_mem with hb2 | hb2 | hb2
-        · exact h_cfgwf.runningUniqueByBid b1 (by simp [hb1]) b2 (by simp [hb2]) h_bid
-        · subst hb2
-          have h_b1_ne : b1.bid ≠ bid := by
-            exact h_left_sep b1.bid (by simpa using List.mem_map.mpr ⟨b1, hb1, rfl⟩)
-          exact False.elim (h_b1_ne (by simpa using h_bid))
-        · exact h_cfgwf.runningUniqueByBid b1 (by simp [hb1]) b2 (by simp [hb2]) h_bid
-      · subst hb1
-        rcases hb2_mem with hb2 | hb2 | hb2
-        · have h_b2_ne : b2.bid ≠ bid := by
-            exact h_left_sep b2.bid (by simpa using List.mem_map.mpr ⟨b2, hb2, rfl⟩)
-          have h_eqb2 : b2.bid = bid := by simpa using h_bid.symm
-          exact False.elim (h_b2_ne h_eqb2)
-        · subst hb2
-          rfl
-        · have h_b2_ne : bid ≠ b2.bid := by
-            exact h_right_sep b2.bid (by simpa using List.mem_map.mpr ⟨b2, hb2, rfl⟩)
-          have h_eqb2 : bid = b2.bid := by simpa using h_bid
-          exact False.elim (h_b2_ne h_eqb2)
-      · rcases hb2_mem with hb2 | hb2 | hb2
-        · exact h_cfgwf.runningUniqueByBid b1 (by simp [hb1]) b2 (by simp [hb2]) h_bid
-        · subst hb2
-          have h_b1_ne : bid ≠ b1.bid := by
-            exact h_right_sep b1.bid (by simpa using List.mem_map.mpr ⟨b1, hb1, rfl⟩)
-          have h_eqb1 : bid = b1.bid := by simpa using h_bid.symm
-          exact False.elim (h_b1_ne h_eqb1)
-        · exact h_cfgwf.runningUniqueByBid b1 (by simp [hb1]) b2 (by simp [hb2]) h_bid
     · have h_old_nodup := h_cfgwf.runningNoDupsByBid
       simp [List.map_append] at h_old_nodup ⊢
       exact h_old_nodup
@@ -162,7 +140,7 @@ lemma cfg_wf_preservation_complete
         pending } :=
   by
     intro h_cfgwf
-    refine ⟨?_, ?_, ?_⟩
+    refine ⟨?_, ?_⟩
     · rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
       constructor
       · intro b hb_mem
@@ -173,23 +151,20 @@ lemma cfg_wf_preservation_complete
           · exact by simp [hb2]
         exact h_run b h_old_mem
       · exact h_pending
-    · have h_old_mem_of_new :
-          ∀b,
-            b ∈ bs1 ++ bs2 →
-            b ∈ bs1 ++ { bid := bid, cowns := cowns, stmt := Stmt.done } :: bs2 := by
-        intro b hb_mem
-        simp at hb_mem
-        rcases hb_mem with hb1 | hb2
-        · exact by simp [hb1]
-        · exact by simp [hb2]
-      intro b1 hb1 b2 hb2 h_bid
-      exact h_cfgwf.runningUniqueByBid
-        b1 (h_old_mem_of_new b1 hb1)
-        b2 (h_old_mem_of_new b2 hb2)
-        h_bid
-    · have h_nodup := h_cfgwf.runningNoDupsByBid
-      simp [List.map_append] at h_nodup ⊢
-      grind
+    · have h_old_nodup := h_cfgwf.runningNoDupsByBid
+      have h_pair :
+          List.Pairwise (fun x y => x ≠ y)
+            (bs1.map Behavior.bid ++ bid :: bs2.map Behavior.bid) := by
+        simpa [List.map_append] using h_old_nodup
+      have h_pair' :
+          List.Pairwise (fun x y => x ≠ y)
+            (bs1.map Behavior.bid ++ bs2.map Behavior.bid) := by
+        rcases List.pairwise_append.mp h_pair with ⟨h_left, h_right, h_cross⟩
+        refine List.pairwise_append.mpr ?_
+        refine ⟨h_left, (List.pairwise_cons.mp h_right).2, ?_⟩
+        intro x hx y hy
+        exact h_cross x hx y (by simp [hy])
+      simpa [List.map_append] using h_pair'
 
 def cfg_done : Cfg → Prop
 | ⟨_, [], []⟩ => True
@@ -1045,7 +1020,7 @@ lemma wf_history_preservation_complete
             bs1 ++ { bid := bid2, cowns := cs, stmt := Stmt.done } :: bs2 := by
           simp
         have h_main_eq :=
-          h_cfgwf.runningUniqueByBid
+          cfg_wf_running_unique_by_bid h_cfgwf
             { bid := bid2, cowns := cs, stmt := Stmt.done } h_main_mem
             b_run hb_run_mem (by simp [hb_run_bid])
         have h_cowns_eq := congrArg Behavior.cowns h_main_eq
@@ -1537,7 +1512,7 @@ lemma history_matches_preservation_complete
                 bs1 ++ { bid := bid, cowns := cs, stmt := Stmt.done } :: bs2 := by
               simp
             have h_main_eq :=
-              h_cfgwf.runningUniqueByBid
+              cfg_wf_running_unique_by_bid h_cfgwf
                 { bid := bid, cowns := cs, stmt := Stmt.done } h_main_mem
                 b hb_mem_old (by simp [hb_bid])
             have h_cowns_eq := congrArg Behavior.cowns h_main_eq
@@ -2375,7 +2350,7 @@ lemma cfg_wf_preservation_run
         pending := bs1 ++ bs2 } :=
   by
     intro h_matches h_cfgwf
-    refine ⟨?_, ?_, ?_⟩
+    refine ⟨?_, ?_⟩
     · rcases h_cfgwf.freshness with ⟨h_running_fresh, h_pending_fresh⟩
       constructor
       · intro br hbr_mem
@@ -2392,41 +2367,23 @@ lemma cfg_wf_preservation_run
           · simp [hb1]
           · simp [hb2]
         exact h_pending_fresh br h_old_mem
-    · intro b1 hb1_mem b2 hb2_mem h_bid
-      simp at hb1_mem hb2_mem
-      rcases hb1_mem with hb1 | hb1
-      · subst hb1
-        rcases hb2_mem with hb2 | hb2
-        · subst hb2
-          rfl
-        · have h_pending : b1 ∈ bs1 ++ b1 :: bs2 := by simp
-          have h_no_run := h_matches.pendingNotRunning b1 h_pending
-          have h_run_b2 : Event.Run b2.bid ∈ H.behaviors b2.bid :=
-            (h_matches.runningNotCompleted b2.bid).1 ⟨b2, hb2, rfl⟩ |>.1
-          have h_run_b1 : Event.Run b1.bid ∈ H.behaviors b1.bid := by
-            simpa [h_bid] using h_run_b2
-          exact False.elim (h_no_run h_run_b1)
-      · rcases hb2_mem with hb2 | hb2
-        · subst hb2
-          have h_pending : b2 ∈ bs1 ++ b2 :: bs2 := by simp
-          have h_no_run := h_matches.pendingNotRunning b2 h_pending
-          have h_run_b1 : Event.Run b1.bid ∈ H.behaviors b1.bid :=
-            (h_matches.runningNotCompleted b1.bid).1 ⟨b1, hb1, rfl⟩ |>.1
-          have h_run_b2 : Event.Run b2.bid ∈ H.behaviors b2.bid := by
-            simpa [h_bid] using h_run_b1
-          exact False.elim (h_no_run h_run_b2)
-        · exact h_cfgwf.runningUniqueByBid b1 hb1 b2 hb2 h_bid
     · have h_old_nodup := h_cfgwf.runningNoDupsByBid
-      simp
-      constructor
-      · intro br hbr_mem h_eq
-        have h_run_br : Event.Run br.bid ∈ H.behaviors br.bid :=
-          (h_matches.runningNotCompleted br.bid).1 ⟨br, hbr_mem, rfl⟩ |>.1
+      -- Prove no-dup for b :: running by using matches to show b.bid ∉ running.map bid
+      have h_b_not_running : ∀br ∈ running, b.bid ≠ br.bid := by
+        intro br hbr_mem
+        have h_b_pending : b ∈ bs1 ++ b :: bs2 := by simp
+        have h_run_pending := h_matches.pendingNotRunning b h_b_pending
+        have h_run_br := (h_matches.runningNotCompleted br.bid).1 ⟨br, hbr_mem, rfl⟩
+        intro h_eq
         have h_run_b : Event.Run b.bid ∈ H.behaviors b.bid := by
-          simpa [h_eq] using h_run_br
-        have h_pending : b ∈ bs1 ++ b :: bs2 := by simp
-        exact (h_matches.pendingNotRunning b h_pending) h_run_b
-      · exact h_old_nodup
+          simpa [h_eq] using h_run_br.1
+        exact h_run_pending h_run_b
+      simp only [List.map_cons]
+      refine List.Pairwise.cons ?_ h_old_nodup
+      intro bid' hbid_mem
+      rcases List.mem_map.mp hbid_mem with ⟨br, hbr_mem, h_eq⟩
+      subst h_eq
+      exact h_b_not_running br hbr_mem
 
 theorem wf_preservation {cfg cfg' H H'} {t : Event → Nat} :
     ((cfg, H) ⇒ (cfg', H')) →
