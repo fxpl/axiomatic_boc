@@ -30,7 +30,6 @@ infixr:80 " ∘ "  => Relation.Comp
 postfix:80 " + " => Relation.TransGen
 postfix:80 " * " => Relation.ReflTransGen
 
-
 -- Relation lemmas
 lemma rel_clos_weaken {A} {R S : A → A → Prop} {x y : A} :
   (∀x y, R x y → S x y) →

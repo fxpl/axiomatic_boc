@@ -228,20 +228,29 @@ theorem empty_history_wf :
   (t : Event → Nat) → t ⊢ History.empty :=
   by
     intro t
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-    · simp [wf_behavior_history]
-    · intro bid1 bid2 bid h_ne h_mem
-      simp at h_mem
-    · simp [wf_cown_history]
-    · simp
-    · simp
-    · simp
-    · simp [History.timestamp_wf]
-    · refine ⟨0, ?_⟩
-      intro e h_mem
-      have h_false : False := by
-        simpa [History.events] using h_mem
-      exact False.elim h_false
+    refine {
+      behaviorWf := by
+        simp [wf_behavior_history]
+      uniqueSpawns := by
+        intro bid1 bid2 bid h_ne h_mem
+        simp at h_mem
+      cownWf := by
+        simp [wf_cown_history]
+      cownEvent := by
+        simp
+      completeOnCown := by
+        simp
+      spawnOnCown := by
+        simp
+      timestampWf := by
+        simp [History.timestamp_wf]
+      hasTop := by
+        refine ⟨0, ?_⟩
+        intro e h_mem
+        have h_false : False := by
+          simpa [History.events] using h_mem
+        exact False.elim h_false
+    }
 
 theorem empty_history_complete :
     History.complete History.empty :=
