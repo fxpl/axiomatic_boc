@@ -143,23 +143,24 @@ def unique_spawns (h : BId → List Event) : Prop :=
 def History.events (H : History) : Set Event :=
   {e | ∃bid, e ∈ H.behaviors bid}
 
-def History.timestamp_wf (H : History) (t : Event → Nat) : Prop :=
+structure History.timestamp_wf (H : History) (t : Event → Nat) : Prop where
   -- Time increases along adjacent behavior/cown history events and spawn->run.
-  (∀bid e1 e2, [e1, e2] <:+: H.behaviors bid → t e1 < t e2)
-  ∧
-  (∀c e1 e2, [e1, e2] <:+: H.cowns c → t e1 < t e2)
-  ∧
-  (∀parent bid,
-     .Spawn bid ∈ H.behaviors parent →
-     .Run bid ∈ H.behaviors bid →
-    t (.Spawn bid) < t (.Run bid))
-  ∧
+  behaviorAdj :
+    ∀bid e1 e2, [e1, e2] <:+: H.behaviors bid → t e1 < t e2
+  cownAdj :
+    ∀c e1 e2, [e1, e2] <:+: H.cowns c → t e1 < t e2
+  spawnRun :
+    ∀parent bid,
+      .Spawn bid ∈ H.behaviors parent →
+      .Run bid ∈ H.behaviors bid →
+      t (.Spawn bid) < t (.Run bid)
   -- This corresponds to happens-before
-  (∀c bid1 bid2,
-    .Complete bid1 ∈ H.cowns c →
-    .Run bid2 ∈ H.cowns c →
-    t (.Complete bid1) < t (.Run bid2) →
-    t (.Spawn bid1) < t (.Spawn bid2))
+  happensBefore :
+    ∀c bid1 bid2,
+      .Complete bid1 ∈ H.cowns c →
+      .Run bid2 ∈ H.cowns c →
+      t (.Complete bid1) < t (.Run bid2) →
+      t (.Spawn bid1) < t (.Spawn bid2)
 
 structure History.wf (t : Event → Nat) (H : History) : Prop where
   -- Behavior histories are well-formed
@@ -203,14 +204,12 @@ example (t : Event → Nat) : ¬ (t ⊢ cyclic_history) :=
   by
     intro h_contra
     have h_twf := h_contra.timestampWf
-    have h_beh_twf := h_twf.1
-    have h_spawn_run_twf := h_twf.2.2.1
+    have h_beh_twf := h_twf.behaviorAdj
+    have h_spawn_run_twf := h_twf.spawnRun
     have h_infix01 : [Event.Run 0, Event.Spawn 1] <:+: cyclic_history.behaviors 0 := by
-      refine ⟨[], [], ?_⟩
-      simp [cyclic_history]
+      exists [], []
     have h_infix10 : [Event.Run 1, Event.Spawn 0] <:+: cyclic_history.behaviors 1 := by
-      refine ⟨[], [], ?_⟩
-      simp [cyclic_history]
+      exists [], []
     have h_r0_s1 : t (Event.Run 0) < t (Event.Spawn 1) := h_beh_twf 0 _ _ h_infix01
     have h_r1_s0 : t (Event.Run 1) < t (Event.Spawn 0) := h_beh_twf 1 _ _ h_infix10
     have h_s1_r1 : t (Event.Spawn 1) < t (Event.Run 1) := by
@@ -225,27 +224,20 @@ theorem empty_history_wf :
   (t : Event → Nat) → t ⊢ History.empty :=
   by
     intro t
-    refine {
-      behaviorWf := by
-        simp [wf_behavior_history]
-      uniqueSpawns := by
-        intro bid1 bid2 bid h_ne h_mem
-        simp at h_mem
-      cownWf := by
-        simp [wf_cown_history]
-      cownEvent := by
-        simp
-      completeOnCown := by
-        simp
-      timestampWf := by
-        simp [History.timestamp_wf]
-      hasTop := by
-        refine ⟨0, ?_⟩
-        intro e h_mem
-        have h_false : False := by
-          simpa [History.events] using h_mem
-        exact False.elim h_false
-    }
+    constructor <;>
+      try solve
+      | simp [wf_behavior_history, wf_cown_history]
+    case uniqueSpawns =>
+      intro bid1 bid2 bid h_ne h_mem
+      simp at h_mem
+    case timestampWf =>
+      constructor <;> simp
+    case hasTop =>
+      exists 0
+      intro e h_mem
+      have h_false : False := by
+        simpa [History.events] using h_mem
+      exact False.elim h_false
 
 theorem empty_history_complete :
     History.complete History.empty :=
@@ -310,7 +302,7 @@ theorem wf_cown_history_append_inv {init tail bid} :
 -- matching Run:  init = init' ++ [Run bid1].
 theorem wf_cown_history_complete_pred {init rest bid1} :
     wf_cown_history (init ++ .Complete bid1 :: rest) →
-    ∃ init', init = init' ++ [.Run bid1] :=
+    ∃init', init = init' ++ [.Run bid1] :=
   by
     intro h_wf
     induction init using wf_cown_history.induct with

@@ -51,10 +51,10 @@ structure CfgWf (cfg : Cfg) : Prop where
     (cfg.running.map Behavior.bid).Pairwise (· ≠ ·)
 
 lemma running_unique_by_bid_of_no_dups {running : List Behavior} :
-      (running.map Behavior.bid).Pairwise (· ≠ ·) →
-      ∀b1 ∈ running, ∀ b2 ∈ running,
-        b1.bid = b2.bid →
-        b1 = b2 :=
+    (running.map Behavior.bid).Pairwise (· ≠ ·) →
+    ∀b1 ∈ running, ∀ b2 ∈ running,
+      b1.bid = b2.bid →
+      b1 = b2 :=
   by
     intro h_nodup
     generalize h_map : running.map Behavior.bid = bids
@@ -107,24 +107,28 @@ lemma cfg_wf_preservation_spawn
         pending := pending ++ [{ bid := fresh, cowns := cowns', stmt := s'' }] } :=
   by
     intro h_cfgwf
-    refine ⟨?_, ?_⟩
-    · rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
+    constructor
+    case freshness =>
+      rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
       constructor
-      · intro b hb_mem
+      case left =>
+        intro b hb_mem
         simp at hb_mem
         rcases hb_mem with hb1 | hbmid | hb2
         · exact Nat.lt_succ_of_lt (h_run b (by simp [hb1]))
         · subst hbmid
           exact Nat.lt_succ_of_lt (h_run { bid := bid, cowns := cowns, stmt := s } (by simp))
         · exact Nat.lt_succ_of_lt (h_run b (by simp [hb2]))
-      · intro b hb_mem
+      case right =>
+        intro b hb_mem
         rcases List.mem_append.mp hb_mem with h_old | h_new
         · exact Nat.lt_succ_of_lt (h_pending b h_old)
         · have h_eqb : b = { bid := fresh, cowns := cowns', stmt := s'' } := by
             simpa using h_new
           subst h_eqb
           exact Nat.lt_succ_self fresh
-    · have h_old_nodup := h_cfgwf.runningNoDupsByBid
+    case runningNoDupsByBid =>
+      have h_old_nodup := h_cfgwf.runningNoDupsByBid
       simp [List.map_append] at h_old_nodup ⊢
       exact h_old_nodup
 
@@ -140,8 +144,9 @@ lemma cfg_wf_preservation_complete
         pending } :=
   by
     intro h_cfgwf
-    refine ⟨?_, ?_⟩
-    · rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
+    constructor
+    case freshness =>
+      rcases h_cfgwf.freshness with ⟨h_run, h_pending⟩
       constructor
       · intro b hb_mem
         have h_old_mem : b ∈ bs1 ++ { bid := bid, cowns := cowns, stmt := Stmt.done } :: bs2 := by
@@ -151,7 +156,8 @@ lemma cfg_wf_preservation_complete
           · exact by simp [hb2]
         exact h_run b h_old_mem
       · exact h_pending
-    · have h_old_nodup := h_cfgwf.runningNoDupsByBid
+    case runningNoDupsByBid =>
+      have h_old_nodup := h_cfgwf.runningNoDupsByBid
       have h_pair :
           List.Pairwise (fun x y => x ≠ y)
             (bs1.map Behavior.bid ++ bid :: bs2.map Behavior.bid) := by
@@ -160,10 +166,8 @@ lemma cfg_wf_preservation_complete
           List.Pairwise (fun x y => x ≠ y)
             (bs1.map Behavior.bid ++ bs2.map Behavior.bid) := by
         rcases List.pairwise_append.mp h_pair with ⟨h_left, h_right, h_cross⟩
-        refine List.pairwise_append.mpr ?_
-        refine ⟨h_left, (List.pairwise_cons.mp h_right).2, ?_⟩
-        intro x hx y hy
-        exact h_cross x hx y (by simp [hy])
+        apply List.pairwise_append.mpr
+        and_intros <;> grind
       simpa [List.map_append] using h_pair'
 
 def cfg_done : Cfg → Prop
@@ -391,8 +395,8 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
   (t' ⊢ H[bid+=Event.Spawn fresh]) :=
   by
     introv h_wf h_top h_matches t'
-    refine {
-    behaviorWf := by
+    constructor
+    case behaviorWf =>
       intro bid'
       simp
       split
@@ -427,7 +431,7 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
             subst h_tail
             simp at h_nmem
       · exact h_wf.behaviorWf bid'
-    uniqueSpawns := by
+    case uniqueSpawns =>
       intro bid1 bid2 bid0 h_ne h_mem1 h_mem2
       by_cases h_eq1 : bid1 = bid
       · have h_eq2 : bid2 ≠ bid := by
@@ -463,27 +467,28 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
         · have h_mem2_old : .Spawn bid0 ∈ H.behaviors bid2 := by
             simpa [History.add_behavior_event, h_eq2] using h_mem2
           exact (h_wf.uniqueSpawns bid1 bid2 bid0 h_ne h_mem1_old) h_mem2_old
-    cownWf := by
+    case cownWf =>
       simp
       exact h_wf.cownWf
-    cownEvent := by
+    case cownEvent =>
       intro c e h_mem
       simp at h_mem
       have ⟨bid', h_mem'⟩ := h_wf.cownEvent c e h_mem
       exists bid'
       simp
       grind
-    completeOnCown := by
+    case completeOnCown =>
       intro c bid1 h_mem1 h_mem2
       simp at h_mem1 h_mem2 ⊢
       split at h_mem2
       · simp at h_mem2
         exact h_wf.completeOnCown c bid1 h_mem1 h_mem2
       · exact h_wf.completeOnCown c bid1 h_mem1 h_mem2
-    timestampWf := by
+    case timestampWf =>
       have h_wft := history_wf_timestamp_wf h_wf
-      refine ⟨?_, ?_, ?_, ?_⟩
-      · simp [t']
+      constructor
+      case behaviorAdj =>
+        simp [t']
         intros bid' e1 e2 h_infix
         split at h_infix
         · next h_eq =>
@@ -515,25 +520,27 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
               H.behaviors bid' := List.init_eq_of_concat_eq h_eq'
             have h_infix_old : [e1, e2] <:+: H.behaviors bid' := by
               exact ⟨init, tail', h_old⟩
-            have h_lt := h_wft.1 bid' e1 e2 h_infix_old
+            have h_lt := h_wft.behaviorAdj bid' e1 e2 h_infix_old
             have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
             have h_fresh1 := h_matches.freshBehaviorHistory bid' e1 h_mem1
             have h_fresh2 := h_matches.freshBehaviorHistory bid' e2 h_mem2
             rcases e1 <;> rcases e2 <;> simp [Event.fresh] at h_fresh1 h_fresh2 ⊢ <;> grind
-        · have h_lt := h_wft.1 bid' e1 e2 h_infix
+        · have h_lt := h_wft.behaviorAdj bid' e1 e2 h_infix
           have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix
           have h_fresh1 := h_matches.freshBehaviorHistory bid' e1 h_mem1
           have h_fresh2 := h_matches.freshBehaviorHistory bid' e2 h_mem2
           rcases e1 <;> rcases e2 <;> simp [Event.fresh] at h_fresh1 h_fresh2 ⊢ <;> grind
-      · simp [t']
+      case cownAdj =>
+        simp [t']
         introv h_infix
         have h_wfc : wf_cown_history (H.cowns c) := h_wf.cownWf c
-        have h_lt := h_wft.2.1 c e1 e2 h_infix
+        have h_lt := h_wft.cownAdj c e1 e2 h_infix
         have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix
         have h_nspawn1 : ¬is_spawn e1 := wf_cown_history_mem_no_spawn h_wfc h_mem1
         have h_nspawn2 : ¬is_spawn e2 := wf_cown_history_mem_no_spawn h_wfc h_mem2
         rcases e1 <;> rcases e2 <;> simp at h_nspawn1 h_nspawn2 ⊢ <;> grind
-      · intro parent bid1 h_mem1 h_mem2
+      case spawnRun =>
+        intro parent bid1 h_mem1 h_mem2
         by_cases h_eq : bid1 = fresh
         · subst h_eq
           have h_mem2_old : .Run bid1 ∈ H.behaviors bid1 := by
@@ -561,8 +568,9 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
               · exact h_old
               · simp at h_new
             · exact h_mem2
-          simpa [t', h_eq] using h_wft.2.2.1 parent bid1 h_mem1_old h_mem2_old
-      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+          simpa [t', h_eq] using h_wft.spawnRun parent bid1 h_mem1_old h_mem2_old
+      case happensBefore =>
+        intro c bid1 bid2 h_mem1 h_mem2 h_lt
         simp [t'] at h_lt ⊢
         have h_neq1 : bid1 ≠ fresh := by
           intros contra
@@ -577,8 +585,8 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
           have h_fresh := h_matches.freshCownHistory _ _ h_mem2
           simp [Event.fresh] at h_fresh
         split <;> try contradiction
-        exact h_wft.2.2.2 c bid1 bid2 h_mem1 h_mem2 h_lt
-    hasTop := by
+        exact h_wft.happensBefore c bid1 bid2 h_mem1 h_mem2 h_lt
+    case hasTop =>
       exists top + 1
       intro e h_mem
       simp [History.events] at h_mem
@@ -608,7 +616,6 @@ lemma wf_history_preservation_spawn {t H s top fresh bid bs1 bs2 cs pending} :
           exists bid'
         have h_lt := h_top e h_mem'
         grind
-    }
 
 lemma history_matches_preservation_spawn
     {t H s top fresh bid bs1 bs2 cs cs' s' s'' pending} :
@@ -625,8 +632,8 @@ lemma history_matches_preservation_spawn
         pending := pending ++ [{bid := fresh, cowns := cs', stmt := s''}] } :=
   by
     introv h_wf h_top h_matches t'
-    refine {
-    runningNotCompleted := by
+    constructor
+    case runningNotCompleted =>
       intro bid'
       constructor
       · intro h_new_running
@@ -678,7 +685,7 @@ lemma history_matches_preservation_spawn
         · subst hbmid
           exact ⟨{ bid := bid, cowns := cs, stmt := s' }, by simp, hb_bid⟩
         · exact ⟨b, by simp [hb2], hb_bid⟩
-    pendingNotRunning := by
+    case pendingNotRunning =>
       intro b hb_mem h_run
       rcases List.mem_append.mp hb_mem with h_old | h_new
       · have h_notrun_old := h_matches.pendingNotRunning b h_old
@@ -701,7 +708,7 @@ lemma history_matches_preservation_spawn
             simpa [History.add_behavior_event, h_eq] using h_run
           have h_fresh_old := h_matches.freshBehaviorHistory fresh (.Run fresh) h_run_old
           simp [Event.fresh] at h_fresh_old
-    pendingSpawned := by
+    case pendingSpawned =>
       intro b hb_mem
       rcases List.mem_append.mp hb_mem with h_old | h_new
       · rcases h_matches.pendingSpawned b h_old with ⟨parent, h_spawn_mem⟩
@@ -716,7 +723,7 @@ lemma history_matches_preservation_spawn
         subst h_eq
         refine ⟨bid, ?_⟩
         simp [History.add_behavior_event]
-    spawnedDisposition := by
+    case spawnedDisposition =>
       intro parent child h_spawn
       have h_running_lift :
         (∃b ∈ bs1 ++ { bid := bid, cowns := cs, stmt := s } :: bs2, b.bid = child) →
@@ -770,7 +777,7 @@ lemma history_matches_preservation_spawn
             simp [History.add_behavior_event]
             exact h_comp
           · simpa [History.add_behavior_event, h_child] using h_comp
-    completedNotActive := by
+    case completedNotActive =>
       intro bidc h_comp
       have h_comp_old : .Complete bidc ∈ H.behaviors bidc := by
         simp [History.add_behavior_event] at h_comp
@@ -800,7 +807,7 @@ lemma history_matches_preservation_spawn
           intro h_eq
           subst h_eq
           exact Nat.lt_irrefl fresh h_lt
-    cownRunning := by
+    case cownRunning =>
       intro bid' c
       constructor
       · intro h_new_running
@@ -828,14 +835,14 @@ lemma history_matches_preservation_spawn
         · subst hbmid
           exact ⟨{ bid := bid, cowns := cs, stmt := s' }, by simp, hb_props⟩
         · exact ⟨b, by simp [hb2], hb_props⟩
-    spawnOnCown := by
+    case spawnOnCown =>
       intro c bid h_mem1
       simp at h_mem1
       have ⟨bid', h_mem'⟩ := h_matches.spawnOnCown c bid h_mem1
       exists bid'
       simp
       grind
-    freshBehaviorHistory := by
+    case freshBehaviorHistory =>
       intro bid' e h_mem
       simp [History.add_behavior_event] at h_mem
       split at h_mem
@@ -850,14 +857,14 @@ lemma history_matches_preservation_spawn
       · have h_fresh_old : Event.fresh fresh e :=
           h_matches.freshBehaviorHistory bid' e h_mem
         rcases e <;> grind [Event.fresh]
-    freshCownHistory := by
+    case freshCownHistory =>
       intro c e h_mem
       have h_mem_old : e ∈ H.cowns c := by
           simpa [History.add_behavior_event] using h_mem
       have h_fresh_old : Event.fresh fresh e :=
         h_matches.freshCownHistory c e h_mem_old
       rcases e <;> grind [Event.fresh]
-    pendingTimestampOrder := by
+    case pendingTimestampOrder =>
       have h_pw := h_matches.pendingTimestampOrder
       rw [List.map_append]
       apply List.pairwise_append.mpr
@@ -885,7 +892,7 @@ lemma history_matches_preservation_spawn
           simp [History.events]
           exact ⟨parent, h_spawn_mem⟩
         exact h_top (Event.Spawn b.bid) h_event_mem
-    pendingOrder := by
+    case pendingOrder =>
       intros bid1 b2 c h_mem1 h_mem2 h_lt
       simp [t'] at h_lt ⊢
       have h_neq1 : bid1 ≠ fresh := by
@@ -902,7 +909,6 @@ lemma history_matches_preservation_spawn
         exact h_top (Event.Spawn bid1) h_mem
       · simp at h_mem1
         apply h_matches.pendingOrder bid1 b2 c <;> grind
-    }
 
 lemma wf_history_preservation_complete
     {t H top bid1 bs1 bs2 bid cs pending} :
@@ -920,8 +926,8 @@ lemma wf_history_preservation_complete
     (t' ⊢ H[bid += Event.Complete bid][cs += Event.Complete bid]) :=
   by
     introv h_wf h_top h_cfgwf h_matches t'
-    refine {
-    behaviorWf := by
+    constructor
+    case behaviorWf =>
       intro bid'
       simp
       split
@@ -956,7 +962,7 @@ lemma wf_history_preservation_complete
             subst h_tail
             simp at h_nmem
       · exact h_wf.behaviorWf bid'
-    uniqueSpawns := by
+    case uniqueSpawns =>
       intro bidx bidy bidz h_ne h_memx h_memy
       by_cases h_eqx : bidx = bid
       · have h_eqy : bidy ≠ bid := by
@@ -977,7 +983,7 @@ lemma wf_history_preservation_complete
         · have h_memy_old : .Spawn bidz ∈ H.behaviors bidy := by
             simpa [History.add_behavior_event, h_eqy] using h_memy
           exact (h_wf.uniqueSpawns bidx bidy bidz h_ne h_memx_old) h_memy_old
-    cownWf := by
+    case cownWf =>
       intro c
       by_cases h_c : c ∈ cs
       · simp [History.add_cown_event, h_c]
@@ -991,7 +997,7 @@ lemma wf_history_preservation_complete
           (h_wf.cownWf c) h_run_ncomplete.1 h_run_ncomplete.2
       · simp [History.add_cown_event, h_c]
         exact h_wf.cownWf c
-    cownEvent := by
+    case cownEvent =>
       intro c e h_mem
       simp [History.add_cown_event] at h_mem
       split at h_mem
@@ -1015,7 +1021,7 @@ lemma wf_history_preservation_complete
           simp [History.add_behavior_event]
           exact Or.inl h_beh_old
         · simpa [History.add_behavior_event, h_parent] using h_beh_old
-    completeOnCown := by
+    case completeOnCown =>
       intros c bid2 h_mem1 h_mem2
       have h_run_old : .Run bid2 ∈ H.cowns c := by
         simp [History.add_cown_event] at h_mem1
@@ -1064,9 +1070,10 @@ lemma wf_history_preservation_complete
         by_cases h_c : c ∈ cs
         · simpa [History.add_cown_event, h_c, h_bid] using h_complete_c_old
         · simpa [History.add_cown_event, h_c] using h_complete_c_old
-    timestampWf := by
-      refine ⟨?_, ?_, ?_, ?_⟩
-      · intro bid' e1 e2 h_infix_new
+    case timestampWf =>
+      constructor
+      case behaviorAdj =>
+        intro bid' e1 e2 h_infix_new
         have h_wft := history_wf_timestamp_wf h_wf
         by_cases h_bid : bid' = bid
         · have h_infix : [e1, e2] <:+: H.behaviors bid' ++ [Event.Complete bid'] := by
@@ -1109,7 +1116,7 @@ lemma wf_history_preservation_complete
               H.behaviors bid' := List.init_eq_of_concat_eq h_eq'
             have h_infix_old : [e1, e2] <:+: H.behaviors bid' := by
               exact ⟨init, tail', h_old⟩
-            have h_lt_old := h_wft.1 bid' e1 e2 h_infix_old
+            have h_lt_old := h_wft.behaviorAdj bid' e1 e2 h_infix_old
             have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
             have h_ne1 : e1 ≠ .Complete bid' := by
               intro h_eq1
@@ -1126,7 +1133,7 @@ lemma wf_history_preservation_complete
             simpa [t', h_ne1b, h_ne2b] using h_lt_old
         · have h_infix_old : [e1, e2] <:+: H.behaviors bid' := by
             simpa [History.add_behavior_event, h_bid] using h_infix_new
-          have h_lt_old := h_wft.1 bid' e1 e2 h_infix_old
+          have h_lt_old := h_wft.behaviorAdj bid' e1 e2 h_infix_old
           have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
           have h_ne1 : e1 ≠ .Complete bid := by
             intro h_eq1
@@ -1141,7 +1148,8 @@ lemma wf_history_preservation_complete
               wf_history_complete_mem_inv (h_wf.behaviorWf bid') h_mem2
             exact h_bid h_bid_eq
           simpa [t', h_ne1, h_ne2] using h_lt_old
-      · intro c e1 e2 h_infix_new
+      case cownAdj =>
+        intro c e1 e2 h_infix_new
         have h_wft := history_wf_timestamp_wf h_wf
         by_cases h_c : c ∈ cs
         · have h_infix : [e1, e2] <:+: H.cowns c ++ [Event.Complete bid] := by
@@ -1182,7 +1190,7 @@ lemma wf_history_preservation_complete
               List.init_eq_of_concat_eq h_eq'
             have h_infix_old : [e1, e2] <:+: H.cowns c := by
               exact ⟨init, tail', h_old⟩
-            have h_lt_old := h_wft.2.1 c e1 e2 h_infix_old
+            have h_lt_old := h_wft.cownAdj c e1 e2 h_infix_old
             have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
             have h_ne1 : e1 ≠ .Complete bid := by
               intro h_eq1
@@ -1195,7 +1203,7 @@ lemma wf_history_preservation_complete
             simpa [t', h_ne1, h_ne2] using h_lt_old
         · have h_infix_old : [e1, e2] <:+: H.cowns c := by
             simpa [History.add_cown_event, h_c] using h_infix_new
-          have h_lt_old := h_wft.2.1 c e1 e2 h_infix_old
+          have h_lt_old := h_wft.cownAdj c e1 e2 h_infix_old
           have h_running_bid :
               ∃b ∈ bs1 ++ { bid := bid, cowns := cs, stmt := Stmt.done } :: bs2, b.bid = bid := by
             refine ⟨{ bid := bid, cowns := cs, stmt := Stmt.done }, ?_, rfl⟩
@@ -1218,7 +1226,8 @@ lemma wf_history_preservation_complete
             subst h_eq2
             exact h_no_complete_c h_mem2
           simpa [t', h_ne1, h_ne2] using h_lt_old
-      · intro parent bid2 h_mem1 h_mem2
+      case spawnRun =>
+        intro parent bid2 h_mem1 h_mem2
         have h_wft := history_wf_timestamp_wf h_wf
         have h_mem1_old : .Spawn bid2 ∈ H.behaviors parent := by
           by_cases h_parent : parent = bid
@@ -1230,8 +1239,9 @@ lemma wf_history_preservation_complete
           · subst h_eq
             simpa [History.add_behavior_event] using h_mem2
           · simpa [History.add_behavior_event, h_eq] using h_mem2
-        simpa [t'] using h_wft.2.2.1 parent bid2 h_mem1_old h_mem2_old
-      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+        simpa [t'] using h_wft.spawnRun parent bid2 h_mem1_old h_mem2_old
+      case happensBefore =>
+        intro c bid1 bid2 h_mem1 h_mem2 h_lt
         have h_wft := history_wf_timestamp_wf h_wf
         simp [t'] at h_lt ⊢
         split at h_lt
@@ -1254,8 +1264,8 @@ lemma wf_history_preservation_complete
           have h_mem2' : .Run bid2 ∈ H.cowns c := by
             simp at h_mem2
             split at h_mem2 <;> grind
-          exact h_wft.2.2.2 c bid1 bid2 h_mem1' h_mem2' h_lt
-    hasTop := by
+          exact h_wft.happensBefore c bid1 bid2 h_mem1' h_mem2' h_lt
+    case hasTop =>
       exists top + 1
       intro e h_mem
       simp [History.events] at h_mem
@@ -1286,7 +1296,6 @@ lemma wf_history_preservation_complete
           exists bid'
         have h_lt := h_top e h_mem'
         grind
-    }
 
 lemma history_matches_preservation_complete
     {t H top bid1 bs1 bs2 bid cs pending} :
@@ -1307,8 +1316,8 @@ lemma history_matches_preservation_complete
         pending } :=
   by
     introv h_wf h_top h_cfgwf h_matches t'
-    refine {
-    runningNotCompleted := by
+    constructor
+    case runningNotCompleted =>
       intro bid'
       constructor
       · intro h_new_running
@@ -1369,7 +1378,7 @@ lemma history_matches_preservation_complete
           exfalso
           exact h_bid'_ne_bid hb_bid.symm
         · exact ⟨b, by simp [hb2], hb_bid⟩
-    pendingNotRunning := by
+    case pendingNotRunning =>
       intro b hb_mem h_run
       have h_notrun_old := h_matches.pendingNotRunning b hb_mem
       by_cases h_eq : b.bid = bid
@@ -1379,7 +1388,7 @@ lemma history_matches_preservation_complete
       · have h_run_old : .Run b.bid ∈ H.behaviors b.bid := by
           simpa [History.add_behavior_event, h_eq] using h_run
         exact h_notrun_old h_run_old
-    pendingSpawned := by
+    case pendingSpawned =>
       intro b hb_mem
       rcases h_matches.pendingSpawned b hb_mem with ⟨parent, h_spawn_old⟩
       refine ⟨parent, ?_⟩
@@ -1387,7 +1396,7 @@ lemma history_matches_preservation_complete
       · subst h_parent
         simpa [History.add_behavior_event] using h_spawn_old
       · simpa [History.add_behavior_event, h_parent] using h_spawn_old
-    spawnedDisposition := by
+    case spawnedDisposition =>
       intro parent child h_spawn
       have h_spawn_old : Event.Spawn child ∈ H.behaviors parent := by
         by_cases h_parent : parent = bid
@@ -1428,7 +1437,7 @@ lemma history_matches_preservation_complete
         · subst h_child
           simp [History.add_behavior_event, History.add_cown_event]
         · simpa [History.add_behavior_event, History.add_cown_event, h_child] using h_comp
-    completedNotActive := by
+    case completedNotActive =>
       simp
       intro bid' h_mem1
       split at h_mem1
@@ -1469,7 +1478,7 @@ lemma history_matches_preservation_complete
           exact h_not_run h_run_b
       · have := h_matches.completedNotActive bid' h_mem1
         grind
-    cownRunning := by
+    case cownRunning =>
       intro bid' c
       constructor
       · intro h_new_running
@@ -1562,7 +1571,7 @@ lemma history_matches_preservation_complete
           exfalso
           exact h_bid'_ne_bid hb_bid.symm
         · exact ⟨b, by simp [hb2], hb_bid, h_c_mem⟩
-    spawnOnCown := by
+    case spawnOnCown =>
       intro c bid' h_run
       have h_run_old : .Run bid' ∈ H.cowns c := by
         simp [History.add_cown_event] at h_run
@@ -1577,7 +1586,7 @@ lemma history_matches_preservation_complete
       · subst h_parent
         simpa [History.add_behavior_event] using h_spawn_old
       · simpa [History.add_behavior_event, h_parent] using h_spawn_old
-    freshBehaviorHistory := by
+    case freshBehaviorHistory =>
       intro bid' e h_mem
       simp [History.add_cown_event, History.add_behavior_event] at h_mem
       split at h_mem
@@ -1596,7 +1605,7 @@ lemma history_matches_preservation_complete
             h_matches.freshBehaviorHistory bid (Event.Run bid) h_run_mem
           simpa [Event.fresh] using h_fresh_run
       · exact h_matches.freshBehaviorHistory bid' e h_mem
-    freshCownHistory := by
+    case freshCownHistory =>
       intro c e h_mem
       simp [History.add_cown_event] at h_mem
       split at h_mem
@@ -1615,13 +1624,13 @@ lemma history_matches_preservation_complete
             h_matches.freshBehaviorHistory bid (Event.Run bid) h_run_mem
           simpa [Event.fresh]
       · exact h_matches.freshCownHistory c e h_mem
-    pendingTimestampOrder := by
+    case pendingTimestampOrder =>
       simp [t']
       apply List.pairwise_map.mpr
       simp
       have h_pw := h_matches.pendingTimestampOrder
       grind
-    pendingOrder := by
+    case pendingOrder =>
       intro bid' b c h_run hb_mem h_c_mem
       have h_run_old : Event.Run bid' ∈ H.cowns c := by
         by_cases h_c_in_cs : c ∈ cs
@@ -1629,7 +1638,6 @@ lemma history_matches_preservation_complete
         · simpa [History.add_cown_event, h_c_in_cs] using h_run
       simp [t']
       exact h_matches.pendingOrder bid' b c h_run_old hb_mem h_c_mem
-    }
 
 lemma wf_cown_history_append_run_of_closed {t : Event → Nat} {newBid : BId} :
     ∀ hist,
@@ -1710,8 +1718,8 @@ lemma wf_history_preservation_run
     (t' ⊢ H[b.bid += Event.Run b.bid][b.cowns += Event.Run b.bid]) :=
   by
     introv h_wf h_top h_no_running h_no_pending h_matches t'
-    refine {
-    behaviorWf := by
+    constructor
+    case behaviorWf =>
       intro bid
       simp
       split
@@ -1736,7 +1744,7 @@ lemma wf_history_preservation_run
         rw [h_empty]
         simp [wf_behavior_history, wf_behavior_history_tail]
       · exact h_wf.behaviorWf bid
-    uniqueSpawns := by
+    case uniqueSpawns =>
       intro bidx bidy bidz h_ne h_memx h_memy
       by_cases h_eqx : bidx = b.bid
       · have h_eqy : bidy ≠ b.bid := by
@@ -1757,7 +1765,7 @@ lemma wf_history_preservation_run
         · have h_memy_old : .Spawn bidz ∈ H.behaviors bidy := by
             simpa [History.add_behavior_event, h_eqy] using h_memy
           exact (h_wf.uniqueSpawns bidx bidy bidz h_ne h_memx_old) h_memy_old
-    cownWf := by
+    case cownWf =>
       intro c
       by_cases h_c : c ∈ b.cowns
       · have h_wft := history_wf_timestamp_wf h_wf
@@ -1773,9 +1781,9 @@ lemma wf_history_preservation_run
             exact False.elim ((h_no_running c h_c) h_flat)
         simpa [History.add_cown_event, h_c] using
           wf_cown_history_append_run_of_closed (newBid := b.bid)
-            (H.cowns c) (h_wf.cownWf c) h_no_open_run (h_wft.2.1 c)
+            (H.cowns c) (h_wf.cownWf c) h_no_open_run (h_wft.cownAdj c)
       · simpa [History.add_cown_event, h_c] using h_wf.cownWf c
-    cownEvent := by
+    case cownEvent =>
       intro c e h_mem
       simp [History.add_cown_event] at h_mem
       split at h_mem
@@ -1799,7 +1807,7 @@ lemma wf_history_preservation_run
           simp [History.add_behavior_event]
           exact Or.inl h_beh_old
         · simpa [History.add_behavior_event, h_parent] using h_beh_old
-    completeOnCown := by
+    case completeOnCown =>
       intro c bid h_mem1 h_mem2
       by_cases h_bid : bid = b.bid
       · subst h_bid
@@ -1824,9 +1832,10 @@ lemma wf_history_preservation_run
         by_cases h_c : c ∈ b.cowns
         · simpa [History.add_cown_event, h_c, h_bid] using h_complete_c_old
         · simpa [History.add_cown_event, h_c] using h_complete_c_old
-    timestampWf := by
-      refine ⟨?_, ?_, ?_, ?_⟩
-      · intro bid' e1 e2 h_infix_new
+    case timestampWf =>
+      constructor
+      case behaviorAdj =>
+        intro bid' e1 e2 h_infix_new
         have h_wft := history_wf_timestamp_wf h_wf
         have h_pending : b ∈ bs1 ++ b :: bs2 := by simp
         have h_no_run_b : .Run b.bid ∉ H.behaviors b.bid :=
@@ -1866,7 +1875,7 @@ lemma wf_history_preservation_run
               List.init_eq_of_concat_eq h_eq'
             have h_infix_old : [e1, e2] <:+: H.behaviors bid' := by
               exact ⟨init, tail', h_old⟩
-            have h_lt_old := h_wft.1 bid' e1 e2 h_infix_old
+            have h_lt_old := h_wft.behaviorAdj bid' e1 e2 h_infix_old
             have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
             have h_ne1 : e1 ≠ .Run b.bid := by
               intro h_eq1
@@ -1883,7 +1892,7 @@ lemma wf_history_preservation_run
             simpa [t', h_ne1, h_ne2] using h_lt_old
         · have h_infix_old : [e1, e2] <:+: H.behaviors bid' := by
             simpa [History.add_behavior_event, h_bid] using h_infix_new
-          have h_lt_old := h_wft.1 bid' e1 e2 h_infix_old
+          have h_lt_old := h_wft.behaviorAdj bid' e1 e2 h_infix_old
           have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
           have h_ne1 : e1 ≠ .Run b.bid := by
             intro h_eq1
@@ -1898,7 +1907,8 @@ lemma wf_history_preservation_run
               wf_history_run_mem_inv (h_wf.behaviorWf bid') h_mem2
             exact h_bid h_bid_eq
           simpa [t', h_ne1, h_ne2] using h_lt_old
-      · intro c e1 e2 h_infix_new
+      case cownAdj =>
+        intro c e1 e2 h_infix_new
         have h_wft := history_wf_timestamp_wf h_wf
         have h_pending : b ∈ bs1 ++ b :: bs2 := by simp
         have h_no_run_b_beh : .Run b.bid ∉ H.behaviors b.bid :=
@@ -1943,7 +1953,7 @@ lemma wf_history_preservation_run
               List.init_eq_of_concat_eq h_eq'
             have h_infix_old : [e1, e2] <:+: H.cowns c := by
               exact ⟨init, tail', h_old⟩
-            have h_lt_old := h_wft.2.1 c e1 e2 h_infix_old
+            have h_lt_old := h_wft.cownAdj c e1 e2 h_infix_old
             have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
             have h_ne1 : e1 ≠ .Run b.bid := by
               intro h_eq1
@@ -1956,7 +1966,7 @@ lemma wf_history_preservation_run
             simpa [t', h_ne1, h_ne2] using h_lt_old
         · have h_infix_old : [e1, e2] <:+: H.cowns c := by
             simpa [History.add_cown_event, h_c] using h_infix_new
-          have h_lt_old := h_wft.2.1 c e1 e2 h_infix_old
+          have h_lt_old := h_wft.cownAdj c e1 e2 h_infix_old
           have ⟨h_mem1, h_mem2⟩ := pair_infix_mem h_infix_old
           have h_ne1 : e1 ≠ .Run b.bid := by
             intro h_eq1
@@ -1967,7 +1977,8 @@ lemma wf_history_preservation_run
             subst h_eq2
             exact h_no_run_b_cown h_mem2
           simpa [t', h_ne1, h_ne2] using h_lt_old
-      · intro parent bid1 h_mem1 h_mem2
+      case spawnRun =>
+        intro parent bid1 h_mem1 h_mem2
         have h_wft := history_wf_timestamp_wf h_wf
         by_cases h_eq : bid1 = b.bid
         · subst h_eq
@@ -1984,9 +1995,10 @@ lemma wf_history_preservation_run
             · simpa [History.add_behavior_event, h_parent] using h_mem1
           have h_mem2_old : .Run bid1 ∈ H.behaviors bid1 := by
             simpa [History.add_behavior_event, h_eq] using h_mem2
-          have h_lt_old := h_wft.2.2.1 parent bid1 h_mem1_old h_mem2_old
+          have h_lt_old := h_wft.spawnRun parent bid1 h_mem1_old h_mem2_old
           simpa [t', h_eq] using h_lt_old
-      · intro c bid1 bid2 h_mem1 h_mem2 h_lt
+      case happensBefore =>
+        intro c bid1 bid2 h_mem1 h_mem2 h_lt
         have h_wft := history_wf_timestamp_wf h_wf
         simp [t'] at h_lt ⊢
         split at h_lt
@@ -2017,8 +2029,8 @@ lemma wf_history_preservation_run
           have h_mem2' : .Run bid2 ∈ H.cowns c := by
             simp at h_mem2
             split at h_mem2 <;> grind
-          exact h_wft.2.2.2 c bid1 bid2 h_mem1' h_mem2' h_lt
-    hasTop := by
+          exact h_wft.happensBefore c bid1 bid2 h_mem1' h_mem2' h_lt
+    case hasTop =>
       exists top + 1
       intro e h_mem
       simp [History.events] at h_mem
@@ -2049,7 +2061,6 @@ lemma wf_history_preservation_run
           exists bid'
         have h_lt := h_top e h_mem'
         grind
-    }
 
 lemma history_matches_preservation_run
   {t H top bid1 bs1 bs2 running b} :
@@ -2068,8 +2079,8 @@ lemma history_matches_preservation_run
         pending := bs1 ++ bs2 } :=
   by
     introv h_wf h_top h_no_running h_no_pending h_matches t'
-    refine {
-    runningNotCompleted := by
+    constructor
+    case runningNotCompleted =>
       intro bid'
       constructor
       · intro h_new_running
@@ -2111,7 +2122,7 @@ lemma history_matches_preservation_run
           have h_old_running := (h_matches.runningNotCompleted bid').2 h_old_hist
           rcases h_old_running with ⟨br, h_mem_old, h_bid⟩
           exact ⟨br, by simp [h_mem_old], h_bid⟩
-    pendingNotRunning := by
+    case pendingNotRunning =>
       intro br hb_mem h_run
       have h_old_mem : br ∈ bs1 ++ b :: bs2 := by
         simp at hb_mem
@@ -2155,7 +2166,7 @@ lemma history_matches_preservation_run
       · have h_run_old : Event.Run br.bid ∈ H.behaviors br.bid := by
           simpa [History.add_behavior_event, h_eq] using h_run
         exact h_notrun_old h_run_old
-    pendingSpawned := by
+    case pendingSpawned =>
       intro br hb_mem
       have h_old_mem : br ∈ bs1 ++ b :: bs2 := by
         simp at hb_mem
@@ -2170,7 +2181,7 @@ lemma history_matches_preservation_run
           exact List.mem_append.mpr (Or.inl h_spawn_old)
         simpa [History.add_behavior_event] using h_spawn_new
       · simpa [History.add_behavior_event, h_parent] using h_spawn_old
-    spawnedDisposition := by
+    case spawnedDisposition =>
       intro parent child h_spawn
       have h_spawn_old : Event.Spawn child ∈ H.behaviors parent := by
         by_cases h_parent : parent = b.bid
@@ -2204,7 +2215,7 @@ lemma history_matches_preservation_run
           simp [History.add_behavior_event]
           exact h_comp
         · simpa [History.add_behavior_event, h_child] using h_comp
-    completedNotActive := by
+    case completedNotActive =>
       intro bid' h_comp
       have h_comp_old : Event.Complete bid' ∈ H.behaviors bid' := by
         by_cases h_eq : bid' = b.bid
@@ -2226,7 +2237,7 @@ lemma history_matches_preservation_run
           · simp [hb1]
           · simp [hb2]
         exact h_completed_old.2 br h_old_mem
-    cownRunning := by
+    case cownRunning =>
       intro bid' c
       constructor
       · intro h_new_running
@@ -2285,7 +2296,7 @@ lemma history_matches_preservation_run
           have h_old_running := (h_matches.cownRunning bid' c).2 h_old_hist
           rcases h_old_running with ⟨br, hbr_mem, hbr_bid, h_c_mem⟩
           exact ⟨br, by simp [hbr_mem], hbr_bid, h_c_mem⟩
-    spawnOnCown := by
+    case spawnOnCown =>
       intro c bid h_run
       have h_run_cases : Event.Run bid ∈ H.cowns c ∨ bid = b.bid := by
         by_cases h_c : c ∈ b.cowns
@@ -2319,7 +2330,7 @@ lemma history_matches_preservation_run
             exact List.mem_append.mpr (Or.inl h_spawn_old)
           simpa [History.add_behavior_event] using h_spawn_new
         · simpa [History.add_behavior_event, h_parent] using h_spawn_old
-    freshBehaviorHistory := by
+    case freshBehaviorHistory =>
       intro bid' e h_mem
       simp [History.add_cown_event, History.add_behavior_event] at h_mem
       split at h_mem
@@ -2335,7 +2346,7 @@ lemma history_matches_preservation_run
             h_matches.freshBehaviorHistory parent (Event.Spawn b.bid) h_spawn_mem
           simpa [Event.fresh] using h_fresh_spawn
       · exact h_matches.freshBehaviorHistory bid' e h_mem
-    freshCownHistory := by
+    case freshCownHistory =>
       intro c e h_mem
       simp [History.add_cown_event] at h_mem
       split at h_mem
@@ -2351,12 +2362,12 @@ lemma history_matches_preservation_run
             h_matches.freshBehaviorHistory parent (Event.Spawn b.bid) h_spawn_mem
           simpa [Event.fresh] using h_fresh_spawn
       · exact h_matches.freshCownHistory c e h_mem
-    pendingTimestampOrder := by
+    case pendingTimestampOrder =>
       apply List.pairwise_map.mpr
       simp [t']
       have h_pw := h_matches.pendingTimestampOrder
       grind
-    pendingOrder := by
+    case pendingOrder =>
       intro bid1 b2 c h_run hb_mem h_c_mem
       have h_old_pending : b2 ∈ bs1 ++ b :: bs2 := by
         simp at hb_mem
@@ -2395,7 +2406,6 @@ lemma history_matches_preservation_run
       · have h_run_old : Event.Run bid1 ∈ H.cowns c := by
           simpa [History.add_cown_event, h_c_in] using h_run
         exact h_matches.pendingOrder bid1 b2 c h_run_old h_old_pending h_c_mem
-    }
 
 lemma cfg_wf_preservation_run
     {H t bid1 running bs1 bs2 b} :
@@ -2554,12 +2564,14 @@ theorem starting_cfg_wf {s} :
         · subst h_eq
           simp [wf_behavior_history_tail]
         · simp [h_eq]
-      · and_intros <;> try simp <;> try grind
-        intro bid e1 e2
-        split <;> try simp
-        intro contra
-        rcases contra with ⟨init, tail, h_eq⟩
-        rcases init <;> simp at h_eq
+      · constructor <;> try solve | simp
+        case behaviorAdj =>
+          intro bid e1 e2 h_infix
+          by_cases h_eq : bid = 0
+          · subst h_eq
+            rcases h_infix with ⟨init, tail, h_eq⟩
+            cases init <;> cases tail <;> simp at h_eq
+          · simp [h_eq] at h_infix
       · exists 1
         simp
     · simp [H, t]
