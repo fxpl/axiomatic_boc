@@ -2459,12 +2459,12 @@ lemma cfg_wf_preservation_run
       exact h_b_not_running br hbr_mem
 
 theorem wf_preservation {cfg cfg' H H'} {t : Event → Nat} :
-    ((cfg, H) ⇒ (cfg', H')) →
-    CfgHistoryInv H t cfg →
     (t ⊢ H) →
+    CfgHistoryInv H t cfg →
+    ((cfg, H) ⇒ (cfg', H')) →
     ∃t', (t' ⊢ H') ∧ CfgHistoryInv H' t' cfg' :=
   by
-    intro h_step h_inv h_wf
+    intro h_wf h_inv h_step
     have ⟨top, h_top⟩ := history_wf_has_top h_wf
     cases h_step with
     | @Spawn fresh bid bs1 bs2 cs cs' s s' s'' pending h_step =>

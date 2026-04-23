@@ -1256,7 +1256,7 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
     have h_clos := wf_cown_history_connected_middle_cr h_wf h_wf_c h_c_eq
     exists c
 
-lemma model_from_history_full_step_in_base_closure {H : History} :
+lemma model_from_history_full_step_in_base_closure {t} {H : History} :
     (t ⊢ H) →
     ∀e1 e2,
       model_full_rel (model_from_history H) e1 e2 →
@@ -1278,7 +1278,7 @@ lemma model_from_history_full_step_in_base_closure {H : History} :
         right
         exists c
 
-lemma model_from_history_full_closure_in_base_closure {H : History} :
+lemma model_from_history_full_closure_in_base_closure {t} {H : History} :
     (t ⊢ H) →
     ∀e1 e2,
       (model_full_rel (model_from_history H)+) e1 e2 →
@@ -1312,7 +1312,7 @@ lemma model_from_history_base_closure_acyclic {t} {H : History} :
       model_from_history_base_closure_lt_timestamp (H := H) (t := t) h_wf h_twf e1 e2 h_clos
     exact timestamp_lt_event_neq h_lt
 
-lemma model_from_history_wf_acyclic_po_r_co_hb {H : History} :
+lemma model_from_history_wf_acyclic_po_r_co_hb {t} {H : History} :
     (t ⊢ H) →
     let m := model_from_history H;
     let r := derived_run_relation m;
@@ -1327,7 +1327,7 @@ lemma model_from_history_wf_acyclic_po_r_co_hb {H : History} :
       exact model_from_history_full_closure_in_base_closure h_wf e1 e2 h_clos'
     exact model_from_history_base_closure_acyclic h_wf e1 e2 h_base
 
-theorem model_from_history_wf {H : History} :
+theorem model_from_history_valid {t} {H : History} :
     (t ⊢ H) →
     Execution.valid (model_from_history H) :=
   by
@@ -1342,7 +1342,7 @@ theorem model_from_history_wf {H : History} :
     case acyclic =>
       exact model_from_history_wf_acyclic_po_r_co_hb h_wf
 
-theorem model_from_history_complete {H : History} :
+theorem model_from_history_complete {t} {H : History} :
     (t ⊢ H) →
     History.complete H →
     Execution.complete (model_from_history H) :=

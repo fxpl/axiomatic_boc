@@ -28,45 +28,6 @@ def Event.fresh (n : Nat) : Event -> Prop
 | .Run m => m < n
 | .Complete m => m < n
 
-@[simp]
-def Event.lt : Event -> Event -> Prop
-| .Spawn bid1, e2
-| .Run bid1, e2
-| .Complete bid1, e2 =>
-    match e2 with
-    | .Spawn bid2
-    | .Run bid2
-    | .Complete bid2 => bid1 < bid2
-
-@[simp]
-def Event.leq : Event -> Event -> Prop
-| .Spawn bid1, e2
-| .Run bid1, e2
-| .Complete bid1, e2 =>
-    match e2 with
-    | .Spawn bid2
-    | .Run bid2
-    | .Complete bid2 => bid1 ≤ bid2
-
-@[simp]
-instance EventLT : LT Event where
-  lt := Event.lt
-
-@[simp]
-instance EventLE : LE Event where
-  le := Event.leq
-
-theorem Event.leq_refl (e : Event) : e ≤ e :=
-  by
-    rcases e <;> simp
-
-theorem Event.lt_neq (e1 e2 : Event) :
-    e1 < e2 →
-    e1 ≠ e2 :=
-  by
-    intro h_lt
-    rcases e1 <;> rcases e2 <;> simp at h_lt <;> grind
-
 instance EventDecEq : DecidableEq Event := by
   intros e1 e2
   rcases e1 with bid1 | bid1 | bid1 <;>
@@ -165,17 +126,18 @@ structure History.timestamp_wf (H : History) (t : Event → Nat) : Prop where
 structure History.wf (t : Event → Nat) (H : History) : Prop where
   -- Behavior histories are well-formed
   behaviorWf : ∀bid, wf_behavior_history bid (H.behaviors bid)
-  -- Spawn events are unique across behaviors
-  uniqueSpawns : unique_spawns H.behaviors
   -- Cown histories are well-formed
   cownWf : ∀c, wf_cown_history (H.cowns c)
+  -- There exists a global timestamping that is monotone on history edges.
+  timestampWf : History.timestamp_wf H t
+  -- Spawn events are unique across behaviors
+  uniqueSpawns : unique_spawns H.behaviors
   -- Every cown event corresponds to some behavior event
   cownEvent : ∀c e, e ∈ H.cowns c → ∃bid, e ∈ H.behaviors bid
   -- If a behavior ran on a cown and later completed, the completion appears in that cown's history
   completeOnCown :
     ∀c bid, .Run bid ∈ H.cowns c → .Complete bid ∈ H.behaviors bid → .Complete bid ∈ H.cowns c
-  -- There exists a global timestamping that is monotone on history edges.
-  timestampWf : History.timestamp_wf H t
+  -- There is always a larger timestamp
   hasTop : ∃top, ∀e ∈ History.events H, t e < top
 
 notation t "⊢" H => History.wf t H
