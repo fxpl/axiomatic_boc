@@ -8,7 +8,7 @@ Below is a table containing the mapping from the paper definitions to the corres
 | ------------ | -------------------- |
 | BId ($i$)    | [`def BId`](BoC/Common.lean) |
 | CId ($c$)    | [`def Cown`](BoC/Common.lean) |
-| Events ($S_i$/$R_i$/$C_i$) | [`inductive Event`](BoC/History.lean) |
+| Events ($S_i$/ $R_i$/ $C_i$) | [`inductive Event`](BoC/History.lean) |
 | Definition 4 (Structure of BoC executions) | [`structure Execution`](BoC/Model.lean) (A) |
 | Definition 5 (Derived relations) | [`def derived_run_relation` and `def derived_co_any`](BoC/Model.lean) (B) |
 | Definition 6 (Cowns) | [`let cowns bid := ...`](BoC/Model.lean) |
