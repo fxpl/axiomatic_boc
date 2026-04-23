@@ -2,14 +2,12 @@ import BoC.Common
 import BoC.History
 import Init.Data.List
 
--- A model is a set of events along with a given program order, coherence order
--- and a disjointness relation on cown sets
-structure Model where
+-- A model is a set of events along with a given program order and cown order
+structure Execution where
   mk ::
   (events : Set Event)
   (po : Event → Event → Prop)
-  (co : Cown → Event → Event → Prop)
-  -- (disj : Set Cown → Set Cown → Prop)
+  (co : CId → Event → Event → Prop)
 
 structure wf_po_relation (events : Set Event) (po : Event → Event → Prop) : Prop where
   -- po only relates known events
@@ -31,7 +29,7 @@ structure wf_po_relation (events : Set Event) (po : Event → Event → Prop) : 
   -- A completion event must finish the same behaviour that was started
   runCompleteSameBid : ∀bid1 bid2, (po+) (.Run bid1) (.Complete bid2) → bid1 = bid2
 
-structure wf_co_relation (events : Set Event) (co : Cown → Event → Event → Prop) : Prop where
+structure wf_co_relation (events : Set Event) (co : CId → Event → Event → Prop) : Prop where
   -- co only relates known events
   eventsOnly : ∀e1 e2 c, co c e1 e2 → e1 ∈ events ∧ e2 ∈ events
   -- co relates complete/run events
@@ -44,9 +42,9 @@ structure wf_co_relation (events : Set Event) (co : Cown → Event → Event →
   uniquePred : ∀e1 e2 e3 c, co c e1 e3 → co c e2 e3 → e1 = e2
   uniqueSucc : ∀e1 e2 e3 c, co c e1 e2 → co c e1 e3 → e2 = e3
 
--- From a model, we can derive a run relation which relates a spawn event of a
+-- From an execution, we can derive a run relation which relates a spawn event of a
 -- behaviour to the corresponding run event
-def derived_run_relation (m : Model) : Event → Event → Prop
+def derived_run_relation (m : Execution) : Event → Event → Prop
 | .Spawn bid, .Run bid' =>
     bid = bid' ∧
     .Spawn bid ∈ m.events ∧
@@ -54,13 +52,13 @@ def derived_run_relation (m : Model) : Event → Event → Prop
 | _, _ => False
 
 
-def derived_co_any (m : Model) : Event → Event → Prop :=
+def derived_co_any (m : Execution) : Event → Event → Prop :=
   fun e1 e2 => ∃c, m.co c e1 e2
 
--- From a model we can derive a happens-before relation which relates a
+-- From an execution we can derive a happens-before relation which relates a
 -- completion event with all the run events that happened after it
 -- hb = {(Ci,Rj) | Si (po ∪ r ∪ co)+ Sj ∧ cowns(i) ∩ cowns(j) ≠ ∅}
-def derived_hb_relation (m : Model) : Event → Event → Prop
+def derived_hb_relation (m : Execution) : Event → Event → Prop
 | .Complete bid1, .Run bid2 =>
   let r := derived_run_relation m;
   let co' := derived_co_any m;
@@ -71,8 +69,8 @@ def derived_hb_relation (m : Model) : Event → Event → Prop
   .Run bid2 ∈ m.events
 | _, _ => False
 
--- Well-formedness conditions for a model
-structure Model.wf (m : Model) : Prop where
+-- Constraints for a valid execution
+structure Execution.valid (m : Execution) : Prop where
   poWf : wf_po_relation m.events m.po
   coWf : wf_co_relation m.events m.co
   -- co creates a single causal order path for any given cown
@@ -90,7 +88,7 @@ structure Model.wf (m : Model) : Prop where
     let hb := derived_hb_relation m
     ∀e1 e2, ((m.po ∪ co' ∪ r ∪ hb)+) e1 e2 → e1 ≠ e2
 
-structure Model.complete (m : Model) : Prop where
+structure Execution.complete (m : Execution) : Prop where
   -- Every run event has a corresponding complete event
   runHasComplete :
     ∀bid, .Run bid ∈ m.events → (m.po+) (.Run bid) (.Complete bid)
@@ -98,7 +96,7 @@ structure Model.complete (m : Model) : Prop where
   spawnHasRun :
     ∀bid, .Spawn bid ∈ m.events → .Run bid ∈ m.events
 
-def model_from_history (H : History) : Model :=
+def model_from_history (H : History) : Execution :=
   ⟨
     -- Events
     {e | ∃bid, e ∈ H.behaviors bid},
@@ -505,7 +503,7 @@ lemma model_from_history_wf_co {t} {H : History} :
       have h_eq := no_dup_pair_eq_r h_no_dup h_infix1' h_infix2'
       simpa [h_eq12, h_eq22] using h_eq
 
-lemma model_from_history_co_mem {H : History} {c : Cown} {e1 e2 : Event} :
+lemma model_from_history_co_mem {H : History} {c : CId} {e1 e2 : Event} :
     (model_from_history H).co c e1 e2 →
     e1 ∈ H.cowns c ∧ e2 ∈ H.cowns c :=
   by
@@ -513,14 +511,14 @@ lemma model_from_history_co_mem {H : History} {c : Cown} {e1 e2 : Event} :
     rcases h_co with ⟨_, _, _, _, h_infix⟩
     exact pair_infix_mem h_infix
 
-lemma model_from_history_co_run_mem {H : History} {c : Cown} {e : Event} {bid : BId} :
+lemma model_from_history_co_run_mem {H : History} {c : CId} {e : Event} {bid : BId} :
     (model_from_history H).co c e (.Run bid) →
     .Run bid ∈ H.cowns c :=
   by
     intro h_co
     exact (model_from_history_co_mem h_co).2
 
-lemma model_from_history_co_complete_mem {H : History} {c : Cown} {bid : BId} {e : Event} :
+lemma model_from_history_co_complete_mem {H : History} {c : CId} {bid : BId} {e : Event} :
     (model_from_history H).co c (.Complete bid) e →
     .Complete bid ∈ H.cowns c :=
   by
@@ -538,7 +536,7 @@ lemma model_from_history_complete_event_mem {t} {H : History} {bid : BId} :
       wf_history_complete_mem_inv (h_wf.behaviorWf owner) h_mem
     simpa [h_owner] using h_mem
 
-lemma complete_behavior_event_on_cown {t} {H : History} {c : Cown} {bid : BId} :
+lemma complete_behavior_event_on_cown {t} {H : History} {c : CId} {bid : BId} :
     (t ⊢ H) →
     .Run bid ∈ H.cowns c →
     .Complete bid ∈ H.behaviors bid →
@@ -659,7 +657,7 @@ lemma wf_cown_history_connected {t} {H} {bid1 bid2} {mid tail} :
             exact rel_clos_weaken (fun _ _ h_po => Or.inl h_po) h_clos_po
           exact Relation.ReflTransGen.trans h_run_to_run h_clos'
 
-lemma wf_cown_history_connected_middle {t} {H : History} {c : Cown} {bid1 bid2 : BId}
+lemma wf_cown_history_connected_middle {t} {H : History} {c : CId} {bid1 bid2 : BId}
                                        {init mid tail : List Event} :
     (t ⊢ H) →
     wf_cown_history (H.cowns c) →
@@ -798,7 +796,7 @@ lemma wf_cown_history_connected_cr {t} {H} {bid1 bid2} {mid tail} :
         rcases e <;> rcases e' <;> simp [wf_cown_history] at h_wf_c
         grind
 
-lemma wf_cown_history_connected_middle_cr {t} {H : History} {c : Cown} {bid1 bid2 : BId}
+lemma wf_cown_history_connected_middle_cr {t} {H : History} {c : CId} {bid1 bid2 : BId}
                                           {init mid tail : List Event} :
     (t ⊢ H) →
     wf_cown_history (H.cowns c) →
@@ -909,10 +907,10 @@ lemma model_from_history_single_causal_path {t} {H : History} :
 
 ------------------------------------------
 
-def model_base_rel (m : Model) : Event → Event → Prop :=
+def model_base_rel (m : Execution) : Event → Event → Prop :=
   m.po ∪ derived_co_any m ∪ derived_run_relation m
 
-def model_full_rel (m : Model) : Event → Event → Prop :=
+def model_full_rel (m : Execution) : Event → Event → Prop :=
   model_base_rel m ∪ derived_hb_relation m
 
 lemma model_from_history_po_lt_timestamp {H : History} {t : Event → Nat} :
@@ -1088,10 +1086,10 @@ lemma model_from_history_hb_subset_base_closure {t} {H : History} :
           (Event.Spawn bid2) h_po_co_r
 
     have ⟨c, h_mem1, h_mem2⟩ : ∃c, .Complete bid1 ∈ H.cowns c ∧ .Run bid2 ∈ H.cowns c := by
-      let A : Set Cown :=
+      let A : Set CId :=
         {c | (∃e, (model_from_history H).co c e (Event.Run bid1))
                   ∨ (∃e, (model_from_history H).co c (Event.Complete bid1) e)}
-      let B : Set Cown :=
+      let B : Set CId :=
         {c | (∃e, (model_from_history H).co c e (Event.Run bid2))
                   ∨ (∃e, (model_from_history H).co c (Event.Complete bid2) e)}
       have ⟨c, h_mem⟩ : ∃c, c ∈ (A ∩ B) := by
@@ -1331,7 +1329,7 @@ lemma model_from_history_wf_acyclic_po_r_co_hb {H : History} :
 
 theorem model_from_history_wf {H : History} :
     (t ⊢ H) →
-    Model.wf (model_from_history H) :=
+    Execution.valid (model_from_history H) :=
   by
     intro h_wf
     constructor
@@ -1347,7 +1345,7 @@ theorem model_from_history_wf {H : History} :
 theorem model_from_history_complete {H : History} :
     (t ⊢ H) →
     History.complete H →
-    Model.complete (model_from_history H) :=
+    Execution.complete (model_from_history H) :=
   by
     introv h_wf h_complete
     constructor

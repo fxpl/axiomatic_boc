@@ -79,7 +79,7 @@ instance EventDecEq : DecidableEq Event := by
 structure History where
   mk ::
   (behaviors : BId → List Event)
-  (cowns : Cown → List Event)
+  (cowns : CId → List Event)
 
 @[reducible]
 def History.empty : History :=
@@ -101,7 +101,7 @@ def History.add_behavior_event (h : History) (bid : BId) (e : Event) : History :
     h.cowns
 
 @[simp]
-def History.add_cown_event (h : History) (cowns : List Cown) (e : Event) : History :=
+def History.add_cown_event (h : History) (cowns : List CId) (e : Event) : History :=
   History.mk
     h.behaviors
     (fun c' =>

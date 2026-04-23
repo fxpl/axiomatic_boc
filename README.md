@@ -1,13 +1,24 @@
-# BoC
+# An Axiomatic Model for Behaviour-Oriented Concurrency
 
-## GitHub configuration
+This repo contains the Lean mechanisation accompanying the paper "When Behaviours Have to Happen: An Axiomatic Model of Causality in Behaviour-Oriented Concurrency" (under submission).
+The mechanisation relies on MathLib for relations and sets.
+Below is a table containing the mapping from the paper definitions to the corresponding mechanisation.
 
-To set up your new GitHub repository, follow these steps:
+| In the paper | In the mechanisation |
+| ------------ | -------------------- |
+| BId          | [`def BId`](BoC/Common.lean) |
+| CownID       | [`def Cown`](BoC/Common.lean) |
+| Events       | [`inductive Event`](BoC/History.lean) |
+| Definition 4 (Structure of BoC executions) | [`structure Execution`](BoC/Model.lean) (A) |
+| Definition 5 (Derived relations) | [`def derived_run_relation` and `def derived_co_any`](BoC/Model.lean) (B) |
+| Definition 6 (Cowns) | [`let cowns bid := ...](BoC/Model.lean) |
+| Definition 7 (Happens-before) | [`def derived_hb_relation`](BoC/Model.lean) |
+| Definition 8 (Valid execution) | [structure Execution.valid](Boc/Model.lean) (C) |
 
-* Under your repository name, click **Settings**.
-* In the **Actions** section of the sidebar, click "General".
-* Check the box **Allow GitHub Actions to create and approve pull requests**.
-* Click the **Pages** section of the settings sidebar.
-* In the **Source** dropdown menu, select "GitHub Actions".
 
-After following the steps above, you can remove this section from the README file.
+- (A) Items 5 and 6 are defined as part of `wf_po_relation` and `wf_co_relation` respectively, which are included in `Execution.valid`.
+- (B) The $\text{co}_c$ relation is expressed as a partial application of $\text{co}$.
+- (C) Items 1 (po part), 2, 3, 4 and 5 are defined as part of `wf_po_relation`.
+      Items 1 (co part), 6 and 7 are defined as part of `wf_co_relation`
+
+TODO: Complete stuff

@@ -1,13 +1,13 @@
 import Mathlib.Logic.Relation
 
 @[reducible]
-def Cown := Nat
+def CId := Nat
 
-def c0 : Cown := 0
-def c1 : Cown := 1
-def c2 : Cown := 2
-def c3 : Cown := 3
-def c4 : Cown := 4
+def c0 : CId := 0
+def c1 : CId := 1
+def c2 : CId := 2
+def c3 : CId := 3
+def c4 : CId := 4
 
 @[reducible]
 def BId := Nat

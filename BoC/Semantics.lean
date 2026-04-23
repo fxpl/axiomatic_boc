@@ -4,7 +4,7 @@ import BoC.History
 section UnderlyingLanguage
 
 inductive Stmt where
-| seq (cowns : List Cown) (body cont : Stmt)
+| seq (cowns : List CId) (body cont : Stmt)
 | done
 
 notation "when" cowns "{{" s "}}" ";" cont => Stmt.seq cowns s cont
@@ -19,7 +19,7 @@ set_option quotPrecheck false in
 set_option hygiene false in
 notation s "~>" s' "|" b => StepBehavior s (s', b)
 
-inductive StepBehavior : Stmt → Stmt × (List Cown × Stmt) → Prop where
+inductive StepBehavior : Stmt → Stmt × (List CId × Stmt) → Prop where
 | When {cowns body cont} :
     ((Stmt.seq cowns body cont) ~> cont | (cowns, body))
 
@@ -29,7 +29,7 @@ section ConcurrentSemantics
 structure Behavior where
   mk ::
   (bid : BId)
-  (cowns : List Cown)
+  (cowns : List CId)
   (stmt : Stmt)
 
 structure Cfg where
@@ -84,7 +84,7 @@ inductive StepCfg : Cfg × History → Cfg × History → Prop where
     StepCfg (⟨fresh, bs1 ++ ⟨bid, cowns, s⟩ :: bs2, pending⟩, H)
             (⟨fresh + 1, bs1 ++ ⟨bid, cowns, s'⟩ :: bs2, pending ++ [⟨fresh, cowns', s''⟩]⟩,
               (H[bid += Event.Spawn fresh]))
-| Complete {fresh bs1 bs2 bid} {cowns : List Cown} {pending H} :
+| Complete {fresh bs1 bs2 bid} {cowns : List CId} {pending H} :
     StepCfg (⟨fresh, bs1 ++ ⟨bid, cowns, Stmt.done⟩ :: bs2, pending⟩, H)
     (⟨fresh, bs1 ++ bs2, pending⟩, (H[bid += Event.Complete bid][cowns += Event.Complete bid]))
 | Run {fresh running bs1 bs2 b H} :
