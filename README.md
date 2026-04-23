@@ -1,4 +1,4 @@
-# An Axiomatic Model for Behaviour-Oriented Concurrency
+# A Mechanised Axiomatic Model for Behaviour-Oriented Concurrency
 
 This repo contains the Lean mechanisation accompanying the paper "When Behaviours Have to Happen: An Axiomatic Model of Causality in Behaviour-Oriented Concurrency" (under submission).
 The mechanisation relies on MathLib for relations and sets.
