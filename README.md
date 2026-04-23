@@ -34,5 +34,6 @@ Below is a table containing the mapping from the paper definitions to the corres
       Items 1 (co part), 6 and 7 are defined as part of `wf_co_relation`
 - (D) Item 1 is expressed as pairwise inequality in `cfgWf`. Remaining items are in `historyMatches`
 
-TODO: Complete stuff
-TODO: Freshness stuff
+The mechanisation further contains machinery for generating fresh behaviour identifiers. This includes an extra field `fresh` in the `Cfg` structure, as well as well-formedness rules ensuring freshness of `fresh`. Similarly, there is an assumption that there is always a larger timestamp available.
+
+Additionally, there is a definition of a _complete_ execution ([`Model.complete`](BoC/Model.lean)), where no more events are possible and a corresponding definition for histories ([`History.complete`](BoC/History.lean)). There is a proof that a complete history matches a configuration without any running or pending behaviours ([`cfg_done_history_complete`](BoC/Semantics.lean)) as well as a proof that a complete history translates into a complete execution ([`model_from_history_complete`](BoC/Model.lean)). Finally, there is an example of a starting configuration with a well-formed and matching history, showing that there is some configuration from which the preservation theorem can be applied ([`starting_cfg_wf`](BoC/Semantics.lean)).
